@@ -1,0 +1,3 @@
+[submodule "naga-repo"]
+	path = naga-repo
+	url = https://github.com/uclmr/naga
