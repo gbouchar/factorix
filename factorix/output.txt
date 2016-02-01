@@ -1,0 +1,8 @@
+FB_experiment.py
+rank__2
+---------
+MRR: 0.0171565876871
+HITS@10: 0.1
+Mean train score:0.613271101262
+Mean val score (neg):0.517542165209
+Mean val score (pos):0.613491575656

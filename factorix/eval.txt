@@ -1,0 +1,14 @@
+FB_experiment.py
+n_iter__500
+rank__5
+neg__1
+minibatch__1000
+learning_rate__0.005
+L2__0.0
+eval_file_name__eval.txt
+---------
+MRR: 0.163006098757
+HITS@10: 0.25
+Mean train score:0.99311609682
+Mean val score (neg):0.536504349215
+Mean val score (pos):0.988750926428
