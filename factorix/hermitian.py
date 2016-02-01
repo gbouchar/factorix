@@ -77,7 +77,7 @@ def sparse_hermitian_scoring(params, tuples):
     dimension. They are encoded such that the first columns correspond to the real part, and the last R correspond to
     the imaginary part. The result of this function is a length-N vector with values:
 
-        S[i] = alpha_0 * Re(sum_j <E[I[i,1],j], E[I[i,2],j]>) + alpha_1 * Im(sum_j <E[I[i,1],j], E[I[i,2],j]>))
+        S[i] = alpha_0 * Re(sum_j E[I[i,1],j] * E[I[i,2],j]) + alpha_1 * Im(sum_j E[I[i,1],j] * E[I[i,2],j]))
 
     Where:
         - I is the tuple tensor of integers with shape (T, 2)
@@ -103,6 +103,61 @@ def sparse_hermitian_scoring(params, tuples):
     emb, symmetry = params
     pred_re, pred_im = sparse_hermitian_product(emb, tuples)
     return symmetry[0] * pred_re + symmetry[1] * pred_im
+
+
+def sparse_relational_hermitian_scoring(emb, tuples):
+    """
+    TensorFlow operator that scores triples where relations are defined by a complex vector w
+
+    It is the same a the sparse_multilinear_dot_product function, but uses complex embeddings instead. The complex
+    embeddings are of size 2 * R where R is the complex
+    dimension. They are encoded such that the first columns correspond to the real part, and the last R correspond to
+    the imaginary part. The result of this function is a length-N vector with values:
+
+
+
+        S[i] = sum(Re(E[I[i,2],j]) * (Re(E[I[i,1],j]) * Re(E[I[i,3],j]) + Im(E[I[i,1],j]) * Im(E[I[i,3],j]))
+                 + Im(E[I[i,2],j]) * (Re(E[I[i,1],j]) * Im(E[I[i,3],j]) - Im(E[I[i,1],j]) * Re(E[I[i,3],j])) )
+
+    Where:
+        - I is the tuple tensor of integers with shape (T, 2)
+        - E is the N * 2R tensor of complex embeddings (R first columns: real part, the last R columsn: imaginary part)
+        - alpha_0 and alpha_1 are the symmetry coefficients
+
+    :param params: tuple (emb, symm_coef) containing:
+        - emb: a real tensor of size [N, 2*R] containing the N rank-R embeddings by row (real part in the rank first R
+        columns, imaginary part in the last R columns)
+        - the 2-tuple (s0, s1) of symmetry coefficients (or complex-to-real projection coefficients) that are used to
+        transform the complex result of the dot product into a real number, as used by most statistical models (e.g.
+        mean of a Gaussian or Poisson distributions, natural parameter of a Bernouilli distribution). The conversion
+        from complexto real is a simple weighted sum: results = s0 * Re(<e_i, e_j>) + s1 * Im(<e_i, e_j>
+    :param tuples: tuple matrix of size [T, 2] containing T pairs of integers corresponding to the indices of the
+        embeddings.
+    :return: Hermitian dot products of selected embeddings
+    >>> emb = tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5], [-3, 1, 0, 2], [-1, 2, -1, -5]]) 
+    >>> idx = tf.Variable([[0, 3, 1], [1, 3, 0], [0, 3, 2], [2, 4, 0], [1, 4, 2], [2, 4, 1]])
+    >>> g = sparse_relational_hermitian_scoring(emb, idx)
+    >>> print(fx.tf_eval(g))
+    [  0.   8.  23.  44.  -8.  32.]
+    """
+    rk = emb.get_shape()[1].value // 2
+    emb_re = emb[:, :rk]
+    emb_im = emb[:, rk:]
+    emb_sel_a_re = tf.gather(emb_re, tuples[:, 0])
+    emb_sel_a_im = tf.gather(emb_im, tuples[:, 0])
+    emb_sel_b_re = tf.gather(emb_re, tuples[:, 2])
+    emb_sel_b_im = tf.gather(emb_im, tuples[:, 2])
+    emb_rel_re = tf.gather(emb_re, tuples[:, 1])
+    emb_rel_im = tf.gather(emb_im, tuples[:, 1])
+    
+    pred_re = tf.mul(emb_sel_a_re, emb_sel_b_re) + tf.mul(emb_sel_a_im, emb_sel_b_im)
+    pred_im = tf.mul(emb_sel_a_re, emb_sel_b_im) - tf.mul(emb_sel_a_im, emb_sel_b_re)
+    
+    tmp = emb_rel_re * pred_re + emb_rel_im * pred_im
+    
+    return tf.reduce_sum(tmp, 1)
+
+
 
 
 def hermitian_dot(u, v):
@@ -175,6 +230,19 @@ def test_hermitian_tuple_scorer():
     print(fx.tf_eval(g))  # close to symmetric
     (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.1, 0.9))
     print(fx.tf_eval(g))  # close to anti-symmetric
+
+
+
+def test_sparse_relational_hermitian_scoring():
+    emb = tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5], [-3, 1, 0, 2], [-1, 2, -1, -5]]) 
+    tuples_var = tf.Variable([[0, 3, 1], [1, 3, 0], [0, 3, 2], [2, 4, 0], [1, 4, 2], [2, 4, 1]])
+    g = sparse_relational_hermitian_scoring(emb, tuples_var)
+    print(fx.tf_eval(g))  # close to anti-symmetric
+
+
+
+
+
 
 
 def test_tuples_factorization_rectangular_matrix(demo=False):
@@ -262,4 +330,5 @@ def test_tuples_factorization_rectangular_matrix(demo=False):
     assert(np.linalg.norm(x_mat_est1-x_mat_est2) < 1e-3)
 
 if __name__ == '__main__':
-    test_hermitian_tuple_scorer()
+    #test_hermitian_tuple_scorer()
+    test_sparse_relational_hermitian_scoring()
