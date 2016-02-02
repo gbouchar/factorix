@@ -136,6 +136,7 @@ class Vocabulary(object):
 # ##################################################################################
 
 
+
 def sentence_split(s):
     s = re.sub(' +', ' ', s.replace('?', ' ?').replace('.', ' .'))
     return s.split(' ')
