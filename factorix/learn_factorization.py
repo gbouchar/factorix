@@ -27,62 +27,9 @@ def generalised_multilinear_dot_product_scorer(tuples_var, rank=None, n_emb=None
     return generalised_multilinear_dot_product( (embeddings, n_scalers), tuples_var, l2=norm_scalers), \
            (embeddings, n_scalers)
 
-# def epochs(iteraror, n_iter=100, eval_freq=1):
-#         it = 0
-#         for epoch in range():
-#             if times is None:
-#                 while True:
-#                     yield
-#             else:
-#                 for i in xrange(times):
-#                     yield object
-
-
-def learn(scoring, sampler, tf_optim, loss_types, verbose=True):
-    """Generic learning function of a model applied on a sampler.
-
-    Args:
-        scoring: operator representing the prediction function applied on an input tensor.
-        loss_types: list of string representing the losses applied to compare the prediction and the expected output
-            It has to be chosen from the allowed loss types accepted by the function ''
-        sampler: data sampler that generates (inputs, outputs, loss_type) until it raises StopIteration
-        tf_optim: TensorFlow model performing the optimization
-        verbose: display iterations
-
-    Returns:
-        Parameters of the model after learning.
-
-    """
-    inputs, outputs = sampler.placeholders()
-    preds, params = scoring(inputs)
-
-
-    # Minimize the loss
-    loss_ops = {}
-    train_ops = {}
-    for m in loss_types:
-        loss_ops[m] = tf.reduce_mean(loss_func(preds, outputs, m))
-        train_ops[m] = tf_optim.minimize(loss_ops[m])
-
-    # Launch the graph.
-    with tf.Session() as sess:  # we close the session at the end of the training
-        sess.run(tf.initialize_all_variables())
-        for epoch, eval_step, (minibatch_inputs, minibatch_outputs, minibatch_type) in epochs(sampler):
-            feed = {inputs: minibatch_inputs, outputs: minibatch_outputs}
-            if eval_step:
-                train_losses = {}
-                for m in loss_types:
-                    _, train_losses[m] = sess.run([train_ops[m], loss_ops[m]], feed_dict=feed)
-                if verbose:
-                    print(epoch, train_losses)
-            else:
-                sess.run(train_ops[minibatch_type], feed_dict=feed)
-        final_params = sess.run(params)
-    return final_params
-
 
 def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000, eval_freq=100,
-                     loss_types=('quadratic', 'logistic'),
+                     loss_types=('quadratic',),
                      negative_prop=0.0, n_emb=None,
                      minibatch_generator=None, verbose=True,
                      scoring=None, negative_sample=False, tf_optim=None, emb0=None):
@@ -124,6 +71,7 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
     """
 
     if isinstance(tuples, tuple) and len(tuples) == 2:
+
         warnings.warn('Providing tuples as (inputs, outputs) is deprecated. '
                       'Use [(input_1, output_1), ..., (input_n, output_n)] instead'
                       'You should provide them as zip(inputs, outputs)')
@@ -207,7 +155,6 @@ def tuples_minibatch_generator(tuples, minibatch_size=100, n_iter=1000, eval_fre
         while epoch < n_iter:
             minibatch_indices, n_rem = create_minibatch_indices(n_t, minibatch_size)
             for ids in minibatch_indices:
-
                 if negative_prop > 0:  # Negative generation
 
                     this_batch_size = len(ids)  # Manage shorter batches (sometimes last ones are shorter)
@@ -375,7 +322,7 @@ def mat2tuples(y_mat, common_types=False):
     return tuples
 
 
-def test_tuples_factorization_rectangular_matrix(oracle_init = False, demo=False, hermitian=False):
+def test_tuples_factorization_rectangular_matrix(oracle_init = False, verbose=False, hermitian=False):
     """
     In this test, we compare the solution of the factorization given by an exact SVD and the solution given by
     the factorize_tuple function because with fully-observed matrix data and quadratic loss the solutions should match
@@ -396,7 +343,7 @@ def test_tuples_factorization_rectangular_matrix(oracle_init = False, demo=False
 
     x_mat_init = np.dot(emb0[:n], emb0[n:].T)  # the initial matrix
 
-    if demo:
+    if verbose:
         print('We obtained a first exact solution by Singular Value Decomposition')
         print('The difference between the observation matrix and the estimated solution is:')
         print(np.linalg.norm(x_mat_est1-y_mat))
@@ -420,7 +367,7 @@ def test_tuples_factorization_rectangular_matrix(oracle_init = False, demo=False
         x_mat_est2_cplx = hermitian_dot(u2[:n, :], u2[n:, :].T)  # fx.clpx2real(fx.hermitian_dot(u2[:n], u2[n:]))
         x_mat_est2 = x_mat_est2_cplx[0] * coefs[0] + x_mat_est2_cplx[1] * coefs[1]
 
-    if demo:
+    if verbose:
         print(x_mat_est2.shape, x_mat_init)
         print('We computed an estimator by minimizing the square loss on the tuples extracted from the matrix')
         print('The difference between the initial solution and the estimated solution is:')
@@ -431,25 +378,19 @@ def test_tuples_factorization_rectangular_matrix(oracle_init = False, demo=False
         print(np.linalg.norm(x_mat_est1-x_mat_est2))
         if hermitian:
             print('Symmetry coefficients: ', coefs)
-    assert(np.linalg.norm(x_mat_est1-x_mat_est2) < 1e-3)
+    else:
+        assert(np.linalg.norm(x_mat_est1-x_mat_est2) < 1e-3)
 
 
-def a():
+def test_learn_factorization(verbose=False):
     y_mat = toy_factorization_problem(n=7, rk=4, noise=1, square=True)
     x_mat_est1, emb0 = svd_factorize_matrix(y_mat, rank=4)  # exact svd solution
-    u2 = factorize_tuples(mat2tuples(y_mat), 4, emb0=emb0, n_iter=500, verbose=False)[0]
+    u2 = factorize_tuples(mat2tuples(y_mat), 4, emb0=emb0, n_iter=500, verbose=verbose)[0]
     x_mat_est2 = np.dot(u2[:7], u2[7:].T)  # the initial matrix
     np.linalg.norm(x_mat_est1-x_mat_est2) < 1e-3
 
-# def b():
-#     y_mat = toy_factorization_problem(n=7, rk=4, noise=1, square=True)
-#     x_mat_est1, emb0 = svd_factorize_matrix(y_mat, rank=4)  # exact svd solution
-#     model = 1
-#     u2 = learn(model, tuple_generator)[0]
-#     x_mat_est2 = np.dot(u2[:7], u2[7:].T)  # the initial matrix
-#     np.linalg.norm(x_mat_est1-x_mat_est2) < 1e-3
 
 if __name__ == '__main__':
-    # test_tuples_factorization_rectangular_matrix(demo=True, hermitian=False)
+    test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=False)
     # test_tuples_factorization_rectangular_matrix(demo=True, hermitian=True)
-    a()
+    #test_learn_factorization(True)
