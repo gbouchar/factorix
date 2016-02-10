@@ -10,12 +10,6 @@ import warnings
 # from naga.members.guillaume.NeuralPredictor import NeuralPredictor, IndependentSlicer, accuracy
 
 
-def multilinear_tuple_scorer_0(tuples_var, rank=None, n_emb=None, emb0=None, mask = None):
-    emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
-    embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
-    #return sparse_multilinear_dot_product(embeddings, tuples_var), (embeddings,)
-    return sparse_multilinear_dot_product_constant_zero(embeddings, tuples_var, mask), (embeddings,)
-
 
 def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
     emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
@@ -97,14 +91,14 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
 
     # the scoring function is usually a dot product between embeddings
     if scoring is None:
-        preds, params = multilinear_tuple_scorer_0(inputs, rank=rank, n_emb=n_emb, emb0=emb0, mask = mask)
+        preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
         #preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
     
     # elif scoring == generalised_multilinear_dot_product_scorer:  # commented because it can be done externally
     #     preds, params = scoring(inputs, rank=rank, n_emb=n_emb, emb0=emb0,
     #                             norm_scalers=norm_scalers)
     else:
-        preds, params = scoring(inputs)
+        preds, params = scoring(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
 
     # Minimize the loss
     loss_ops = {}
