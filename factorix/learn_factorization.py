@@ -2,12 +2,19 @@ import random
 import numpy as np
 import tensorflow as tf
 from naga.factorix.scoring import sparse_multilinear_dot_product, \
-multilinear_square_product, generalised_multilinear_dot_product
+multilinear_square_product, generalised_multilinear_dot_product, sparse_multilinear_dot_product_constant_zero
 from naga.factorix.losses import loss_func, get_loss_type
 import warnings
 
 # from read_arit import read_arit_dialogs, dialog2txt
 # from naga.members.guillaume.NeuralPredictor import NeuralPredictor, IndependentSlicer, accuracy
+
+
+def multilinear_tuple_scorer_0(tuples_var, rank=None, n_emb=None, emb0=None, mask = None):
+    emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
+    embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
+    #return sparse_multilinear_dot_product(embeddings, tuples_var), (embeddings,)
+    return sparse_multilinear_dot_product_constant_zero(embeddings, tuples_var, mask), (embeddings,)
 
 
 def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
@@ -85,7 +92,8 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
                      loss_types=('quadratic', 'logistic'),
                      negative_prop=0.0, n_emb=None,
                      minibatch_generator=None, verbose=True,
-                     scoring=None, negative_sample=False, tf_optim=None, emb0=None):
+                     scoring=None, negative_sample=False, tf_optim=None, emb0=None, n_ent = None,
+                     mask = None):
 
     """
     Factorize a knowledge base using a TensorFlow model
@@ -137,11 +145,13 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
     tf_optim = tf_optim if tf_optim is not None else tf.train.AdamOptimizer(learning_rate=0.1)
 
     inputs, outputs, minibatch_generator = simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq,
-                                                                  negative_prop)
+                                                                  negative_prop, n_ent)
 
     # the scoring function is usually a dot product between embeddings
     if scoring is None:
-        preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
+        preds, params = multilinear_tuple_scorer_0(inputs, rank=rank, n_emb=n_emb, emb0=emb0, mask = mask)
+        #preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
+    
     # elif scoring == generalised_multilinear_dot_product_scorer:  # commented because it can be done externally
     #     preds, params = scoring(inputs, rank=rank, n_emb=n_emb, emb0=emb0,
     #                             norm_scalers=norm_scalers)
@@ -172,13 +182,14 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
     return final_params
 
 
-def simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq, negative_prop):
+def simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq, negative_prop, n_ent):
     # the generator of minibatches
     loss_type = get_loss_type(tuples[0][1])  # takes the first tuple as a type example
     minibatch_generator, n_emb, arity,  minibatch_size = \
         tuples_minibatch_generator(tuples, minibatch_size=minibatch_size, n_iter=n_iter, eval_freq=eval_freq,
-                                       negative_prop=negative_prop, loss_type=loss_type)
+                                       negative_prop=negative_prop, loss_type=loss_type, n_ent=n_ent)
 
+    print "n_iter",n_iter
     # model: inputs, outputs and parameters
     inputs = tf.placeholder("int32", [(1+negative_prop) * minibatch_size, arity])
     outputs = tf.placeholder("float32", [(1+negative_prop) * minibatch_size])
@@ -187,11 +198,14 @@ def simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq, negative_p
     return inputs, outputs, minibatch_generator
 
 
-def tuples_minibatch_generator(tuples, minibatch_size=100, n_iter=1000, eval_freq=50, negative_prop = 0.0, loss_type=0):
+def tuples_minibatch_generator(tuples, minibatch_size=100, n_iter=1000, eval_freq=50, 
+                               negative_prop = 0.0, loss_type=0, n_ent = None):
     train_inputs = np.array([x for x, y in tuples])
     train_outputs = np.array([y for x, y in tuples])
+    print( "train_inputs.shape", train_inputs.shape)
     arity = train_inputs.shape[1]
-    n_ent = np.max(train_inputs) + 1
+    if n_ent == None:
+        n_ent = np.max(train_inputs) + 1
     n_t = train_inputs.shape[0]
     minibatch_size = min(minibatch_size, n_t)  # for small datasets
     minibatch_type = loss_type

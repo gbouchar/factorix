@@ -26,6 +26,7 @@ def sparse_multilinear_dot_product(emb, tuples, l2=0):
     [  4.   4.  15.  15.   6.   6.]
     """
     emb_sel = tf.gather(emb, tuples)
+    
     pred = tf.reduce_sum(tf.reduce_prod(emb_sel, 1), 1)
     if l2 == 0:  # unregularized prediction ==> returns only the predictions
         return pred
