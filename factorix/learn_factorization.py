@@ -1,9 +1,9 @@
 import random
 import numpy as np
 import tensorflow as tf
-from naga.factorix.scoring import sparse_multilinear_dot_product, \
+from factorix.scoring import sparse_multilinear_dot_product, \
 multilinear_square_product, generalised_multilinear_dot_product
-from naga.factorix.losses import loss_func, get_loss_type
+from factorix.losses import loss_func, get_loss_type
 import warnings
 
 # from read_arit import read_arit_dialogs, dialog2txt
@@ -284,7 +284,7 @@ def create_minibatch_indices(n, minibatch_size):
     return np.split(all_indices, n_steps), n_rem
 
 
-def toy_factorization_problem(n=7, m=6, rk=4, noise=1, square=False):
+def toy_factorization_problem(n=7, m=6, rk=4, noise=1, square=False, prop_zeros=.9):
     """
     Create a random matrix which is the sum of a low-rank matrix and a entry-wise centered Gaussian noise
     :param n: number of rows
@@ -297,6 +297,11 @@ def toy_factorization_problem(n=7, m=6, rk=4, noise=1, square=False):
     u0_mat = np.random.randn(n, rk)
     v0_mat = np.random.randn(m, rk)
     y_mat = np.random.randn(n, m) * noise + np.dot(u0_mat, v0_mat.transpose())
+    if prop_zeros > 0.:
+        indices = np.random.randint(0, n * m, int(n * m * prop_zeros))
+        y_mat = y_mat.reshape((-1))
+        y_mat[indices] = 0.0
+        y_mat = y_mat.reshape((n, m))
     return y_mat
 
 
@@ -311,23 +316,35 @@ def svd_factorize_matrix(y_mat, rank):
     return np.dot(u, v.T), np.concatenate([u, v], axis=0)
 
 
-def mat2tuples(y_mat, common_types=False):
+def mat2tuples(y_mat, sparse=False, common_types=False):
     # conversion to tuples
     n, m = y_mat.shape
     if common_types:
         offset = 0
     else:
         offset = n
-    tuples = [([i, offset + j], y_mat[i, j]) for i in range(n) for j in range(m)]
+    if sparse:
+        tuples = [([i, offset + j], y_mat[i, j]) for i in range(n) for j in range(m) if abs(y_mat[i, j]) > 1e-8]
+    else:
+        tuples = [([i, offset + j], y_mat[i, j]) for i in range(n) for j in range(m)]
     return tuples
 
 
-def test_tuples_factorization_rectangular_matrix(oracle_init = False, verbose=False, hermitian=False):
+def test_tuples_factorization_rectangular_matrix(oracle_init=False, verbose=False, hermitian=False):
     """
     In this test, we compare the solution of the factorization given by an exact SVD and the solution given by
     the factorize_tuple function because with fully-observed matrix data and quadratic loss the solutions should match
     exactly.
-    :param demo: True for demo mode where explanations are printed in the standard output. Otherwise a test is run.
+
+    Args:
+        verbose:
+        hermitian:
+
+    Returns:
+
+    """
+    """
+    :param verbose: True for demo mode where explanations are printed in the standard output. Otherwise a test is run.
     :param oracle_init: Do we initialize at the exact solution?
     :return: Nothing
     """
@@ -338,13 +355,12 @@ def test_tuples_factorization_rectangular_matrix(oracle_init = False, verbose=Fa
 
     x_mat_est1, emb0 = svd_factorize_matrix(y_mat, rank=4)  # exact svd solution
 
-    if not oracle_init:  # random initialization
-        emb0 = np.random.normal(size=(n + m, rk)) * 0.1
+    emb0 = np.random.normal(size=(n + m, rk)) * 0.1
 
     x_mat_init = np.dot(emb0[:n], emb0[n:].T)  # the initial matrix
 
     if verbose:
-        print('We obtained a first exact solution by Singular Value Decomposition')
+        print('\n\n\nWe obtained a first exact solution by Singular Value Decomposition')
         print('The difference between the observation matrix and the estimated solution is:')
         print(np.linalg.norm(x_mat_est1-y_mat))
         print()
@@ -385,12 +401,41 @@ def test_tuples_factorization_rectangular_matrix(oracle_init = False, verbose=Fa
 def test_learn_factorization(verbose=False):
     y_mat = toy_factorization_problem(n=7, rk=4, noise=1, square=True)
     x_mat_est1, emb0 = svd_factorize_matrix(y_mat, rank=4)  # exact svd solution
-    u2 = factorize_tuples(mat2tuples(y_mat), 4, emb0=emb0, n_iter=500, verbose=verbose)[0]
-    x_mat_est2 = np.dot(u2[:7], u2[7:].T)  # the initial matrix
-    np.linalg.norm(x_mat_est1-x_mat_est2) < 1e-3
+    u2 = factorize_tuples(mat2tuples(y_mat), 4, emb0=None, n_iter=500, verbose=verbose, eval_freq=100)[0]
+    x_mat_est2 = np.dot(u2[:7], u2[7:].T)
+    if verbose:
+        print(np.linalg.norm(x_mat_est1 - x_mat_est2))
+    else:
+        assert(np.linalg.norm(x_mat_est1 - x_mat_est2) < 1e-3)
 
+
+def test_sparse_factorization(verbose=False):
+    n = 7
+    y_mat = toy_factorization_problem(n=n, rk=4, noise=1, square=True, prop_zeros=0.5)
+    tuples_dense = mat2tuples(y_mat, sparse=False)
+    tuples_sparse = mat2tuples(y_mat, sparse=True)
+    if verbose:
+        print(y_mat)
+        print(tuples_dense)
+        print(tuples_sparse)
+    x_mat_est1, emb0 = svd_factorize_matrix(y_mat, rank=4)  # exact svd solution
+
+    tuples_dense = tuples_round_robin_sampler(tuples_dense, batch_size=n * n)
+    u_dense = factorize_tuples(tuples_dense, 4, emb0=None, n_iter=500, verbose=verbose, eval_freq=100)[0]
+    rr_sampler = tuples_round_robin_sampler(tuples_sparse, batch_size=n * n, prop_negatives=1)
+    u_sparse = factorize_tuples(rr_sampler, 4, emb0=None, n_iter=500, verbose=verbose, eval_freq=100)[0]
+    x_mat_est_dense = np.dot(u_dense[:7], u_dense[7:].T)
+    x_mat_est_sparse = np.dot(u_sparse[:7], u_sparse[7:].T)
+    if verbose:
+        print(np.linalg.norm(x_mat_est1 - x_mat_est_dense))
+        print(np.linalg.norm(x_mat_est1 - x_mat_est_sparse))
+        print(np.linalg.norm(x_mat_est_dense - x_mat_est_sparse))
+    else:
+        assert(np.linalg.norm(x_mat_est1 - x_mat_est_dense) < 1e-3)
+        assert(np.linalg.norm(x_mat_est1 - x_mat_est_sparse) < 1e-3)
 
 if __name__ == '__main__':
-    test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=False)
-    # test_tuples_factorization_rectangular_matrix(demo=True, hermitian=True)
-    #test_learn_factorization(True)
+    # test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=False)
+    # test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=True)
+    # test_learn_factorization(verbose=True)
+    test_sparse_factorization(verbose=True)
