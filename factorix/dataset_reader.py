@@ -7,8 +7,38 @@ This file is for reading in and preparing the FB15K237 dataset
 
 @author: Johannes
 """
+import numpy as np
+import naga.shared.dictionaries as Dict
 
-import Dictionaries as Dict
+
+def mat2tuples(y_mat, sparse=False, common_types=False):
+    """ Transform a dense matrix into tuples
+    Args:
+        y_mat: input matrix (2d array)
+        sparse: whether tuples are created for zeros
+        common_types: whether the rows and columns correspond to the same type (false by default, as in SVD)
+
+    Returns:
+        a list of pairs
+
+    Examples:
+        >>> mat2tuples(np.array([[1,2,0],[3,0,1]]))
+        [([0, 2], 1), ([0, 3], 2), ([0, 4], 0), ([1, 2], 3), ([1, 3], 0), ([1, 4], 1)]
+        >>> mat2tuples(np.array([[1,2,0],[3,0,1]]), sparse=True)
+        [([0, 2], 1), ([0, 3], 2), ([1, 2], 3), ([1, 4], 1)]
+
+    """
+    # conversion to tuples
+    n, m = y_mat.shape
+    if common_types:
+        offset = 0
+    else:
+        offset = n
+    if sparse:
+        tuples = [([i, offset + j], y_mat[i, j]) for i in range(n) for j in range(m) if abs(y_mat[i, j]) > 1e-8]
+    else:
+        tuples = [([i, offset + j], y_mat[i, j]) for i in range(n) for j in range(m)]
+    return tuples
 
 #global variable: directory of dataset (choose yourself)
 #dir_FB15K237 = '/Users/Johannes/PhD/CFM/FB15K237/'  

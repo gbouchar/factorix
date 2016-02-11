@@ -1,10 +1,29 @@
 import random
 import numpy as np
 import tensorflow as tf
-import naga.factorix as fx
+
+from naga.shared.tf_addons import tf_eval
 
 # from read_arit import read_arit_dialogs, dialog2txt
 # from naga.members.guillaume.NeuralPredictor import NeuralPredictor, IndependentSlicer, accuracy
+
+
+def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
+    emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
+    embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
+    return sparse_multilinear_dot_product(embeddings, tuples_var), (embeddings,)
+
+
+def generalised_multilinear_dot_product_scorer(tuples_var, rank=None, n_emb=None,
+                                               emb0=None, norm_scalers = None):
+    emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
+    norm_scalers = norm_scalers if norm_scalers is not None \
+        else np.random.normal( size=(len(tuples_var[0]) ) )
+
+    embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
+    n_scalers = tf.Variable(tf.cast(norm_scalers, 'float32'), 'norm_scalers')
+    return generalised_multilinear_dot_product( (embeddings, n_scalers), tuples_var, l2=norm_scalers), \
+           (embeddings, n_scalers)
 
 
 def sparse_multilinear_dot_product(emb, tuples, l2=0):
@@ -22,7 +41,7 @@ def sparse_multilinear_dot_product(emb, tuples, l2=0):
     >>> emb = [[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]
     >>> idx = tf.Variable([[0, 1], [1, 0], [0, 2], [2, 0], [1, 2], [2, 1]])
     >>> g = sparse_multilinear_dot_product(emb, idx)
-    >>> print(fx.tf_eval(g))
+    >>> print(tf_eval(g))
     [  4.   4.  15.  15.   6.   6.]
     """
     emb_sel = tf.gather(emb, tuples)
@@ -50,7 +69,7 @@ def multilinear_square_product(emb, tuples, l2=0):
     >>> emb = [[12., 0, 0], [0, 1, 0], [-1, 1, 1]]
     >>> idx = tf.Variable([[1,0,0],[1,1,0]])
     >>> g = multilinear_square_product(emb, idx)
-    >>> print(fx.tf_eval(g))
+    >>> print(tf_eval(g))
     [ 577.  148.]
     """
     emb_sel = tf.gather(emb, tuples)
@@ -85,7 +104,7 @@ def generalised_multilinear_dot_product(params, tuples, l2=0):
     >>> params = (emb, domain_offsets)
     >>> idx = tf.Variable([[1,0,0], [1,1,0]])
     >>> g = generalised_multilinear_dot_product(params, idx)
-    >>> print(fx.tf_eval(g))
+    >>> print(tf_eval(g))
     [ 53.  41.]
     """
     emb, domain_offsets = params
@@ -106,3 +125,22 @@ def generalised_multilinear_dot_product(params, tuples, l2=0):
         reg = l2 * tf.reduce_sum(tf.square(emb_sel))
         return pred, reg
 
+
+#
+# def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
+#     emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
+#     embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
+#     return sparse_multilinear_dot_product(embeddings, tuples_var), (embeddings,)
+#
+#
+# def generalised_multilinear_dot_product_scorer(tuples_var, rank=None, n_emb=None,
+#                                                emb0=None, norm_scalers = None):
+#     emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
+#     norm_scalers = norm_scalers if norm_scalers is not None \
+#         else np.random.normal( size=(len(tuples_var[0]) ) )
+#
+#     embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
+#     n_scalers = tf.Variable(tf.cast(norm_scalers, 'float32'), 'norm_scalers')
+#     return generalised_multilinear_dot_product( (embeddings, n_scalers), tuples_var, l2=norm_scalers), \
+#            (embeddings, n_scalers)
+# =======

@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
-import naga.factorix as fx
-
+from naga.shared.tf_addons import tf_eval
 
 def hermitian_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None, symmetry_coef=(1.0, 1.0),
                            learn_symmetry_coef=True):
@@ -21,16 +20,16 @@ def hermitian_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None, symmetr
     >>> emb = [[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]
     >>> tuples_var = tf.Variable([[0, 1], [1, 0], [0, 2], [2, 0], [1, 2], [2, 1]])
     >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(1.0, 0.0))
-    >>> print(fx.tf_eval(g))  # symmetric form
+    >>> print(tf_eval(g))  # symmetric form
     [  4.   4.  15.  15.   6.   6.]
     >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.0, 1.0))
-    >>> print(fx.tf_eval(g))  # skewed (anti-symmetric) form
+    >>> print(tf_eval(g))  # skewed (anti-symmetric) form
     [-2.  2.  3. -3.  4. -4.]
     >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(1.0, 1.0))
-    >>> print(fx.tf_eval(g))  # combination of the previous two forms
+    >>> print(tf_eval(g))  # combination of the previous two forms
     [  2.   6.  18.  12.  10.   2.]
     >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.9, 0.1))
-    >>> print(fx.tf_eval(g))  # close to symmetric
+    >>> print(tf_eval(g))  # close to symmetric
     [  3.39999986   3.79999995  13.80000019  13.19999981   5.79999971
        4.99999952]
     """
@@ -97,7 +96,7 @@ def sparse_hermitian_scoring(params, tuples):
     >>> emb = (tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]), (0.0, 1.0))
     >>> idx = tf.Variable([[0, 1], [1, 0], [0, 2], [2, 0], [1, 2], [2, 1]])
     >>> g = sparse_hermitian_scoring(emb, idx)
-    >>> print(fx.tf_eval(g))
+    >>> print(tf_eval(g))
     [-2.  2.  3. -3.  4. -4.]
     """
     emb, symmetry = params
@@ -137,7 +136,7 @@ def sparse_relational_hermitian_scoring(emb, tuples):
     >>> emb = tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5], [-3, 1, 0, 2], [-1, 2, -1, -5]]) 
     >>> idx = tf.Variable([[0, 3, 1], [1, 3, 0], [0, 3, 2], [2, 4, 0], [1, 4, 2], [2, 4, 1]])
     >>> g = sparse_relational_hermitian_scoring(emb, idx)
-    >>> print(fx.tf_eval(g))
+    >>> print(tf_eval(g))
     [  0.   8.  23.  44.  -8.  32.]
     """
     rk = emb.get_shape()[1].value // 2
@@ -177,7 +176,6 @@ def hermitian_dot(u, v):
            [ 2.,  0.,  4.],
            [-3., -4.,  0.]]))
     """
-    print(u.shape, v.shape)
     rk = u.shape[1] // 2
     u_re = u[:, :rk]
     u_im = u[:, rk:]
@@ -221,15 +219,15 @@ def test_hermitian_tuple_scorer():
     emb = [[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]
     tuples_var = tf.Variable([[0, 1], [1, 0], [0, 2], [2, 0], [1, 2], [2, 1]])
     (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(1.0, 0.0))
-    print(fx.tf_eval(g))
+    print(tf_eval(g))
     (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.0, 1.0))
-    print(fx.tf_eval(g))
+    print(tf_eval(g))
     (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.5, 0.5))
-    print(fx.tf_eval(g))
+    print(tf_eval(g))
     (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.9, 0.1))
-    print(fx.tf_eval(g))  # close to symmetric
+    print(tf_eval(g))  # close to symmetric
     (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.1, 0.9))
-    print(fx.tf_eval(g))  # close to anti-symmetric
+    print(tf_eval(g))  # close to anti-symmetric
 
 
 
@@ -237,7 +235,7 @@ def test_sparse_relational_hermitian_scoring():
     emb = tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5], [-3, 1, 0, 2], [-1, 2, -1, -5]]) 
     tuples_var = tf.Variable([[0, 3, 1], [1, 3, 0], [0, 3, 2], [2, 4, 0], [1, 4, 2], [2, 4, 1]])
     g = sparse_relational_hermitian_scoring(emb, tuples_var)
-    print(fx.tf_eval(g))  # close to anti-symmetric
+    print(tf_eval(g))  # close to anti-symmetric
 
 
 
@@ -297,7 +295,7 @@ def test_tuples_factorization_rectangular_matrix(demo=False):
         emb0 = np.concatenate([emb0_u, emb0_v], axis=0)
     else:  # random initialization
         emb0 = np.random.normal(size=(n + m, rk)) * 0.1
-    # x_mat_init = fx.hermitian_dot(emb0[:n], emb0[n:])
+    # x_mat_init = hermitian_dot(emb0[:n], emb0[n:])
     x_mat_init = np.dot(emb0[:n], emb0[n:].T)
 
     # choose an optimizer (Adam deems to be the most reliable)
@@ -315,7 +313,7 @@ def test_tuples_factorization_rectangular_matrix(demo=False):
     # optimization (we specify optional parameters, but the values by default could work as well)
     u2, coefs = factorize_tuples((indices, values), rk, emb0=emb0, n_iter=300, tf_optim=optim, scoring=scoring)
     # recover the matrix based on the hermitian dot product of the embeddings
-    x_mat_est2_cplx = hermitian_dot(u2[:n, :], u2[n:, :].T)  # fx.clpx2real(fx.hermitian_dot(u2[:n], u2[n:]))
+    x_mat_est2_cplx = hermitian_dot(u2[:n, :], u2[n:, :].T)  # clpx2real(hermitian_dot(u2[:n], u2[n:]))
     x_mat_est2 = x_mat_est2_cplx[0] * coefs[0] + x_mat_est2_cplx[1] * coefs[1]
     if demo:
         print(x_mat_est2.shape, x_mat_init)

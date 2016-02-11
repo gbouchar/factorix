@@ -4,9 +4,10 @@ import warnings
 
 import tensorflow as tf
 
+# from factorix.scoring import sparse_multilinear_dot_product, generalised_multilinear_dot_product
 from factorix.losses import loss_func, get_loss_type
 from factorix.dataset_reader import mat2tuples
-from factorix.toy_examples import toy_factorization_problem, svd_factorize_matrix
+from factorix.demos.toy_examples import toy_factorization_problem, svd_factorize_matrix
 from factorix.samplers import tuple_sampler, simple_tuple_generator
 from factorix.scoring import multilinear_tuple_scorer
 
@@ -70,13 +71,13 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
 
     if isinstance(tuples, list):
         inputs, outputs, minibatch_generator = simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq,
-                                                                  negative_prop, n_ent, bigram, dictionaries)
+                                                                      negative_prop, n_ent, bigram, dictionaries)
 
     # the scoring function is usually a dot product between embeddings
     if scoring is None:
         preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
         #preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
-    
+
     # elif scoring == generalised_multilinear_dot_product_scorer:  # commented because it can be done externally
     #     preds, params = scoring(inputs, rank=rank, n_emb=n_emb, emb0=emb0,
     #                             norm_scalers=norm_scalers)

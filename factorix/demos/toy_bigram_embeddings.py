@@ -1,0 +1,23 @@
+
+tuples = [
+    ('UK', 'has_it_government_located_in', 'London'),
+    ('France', 'has_it_government_located_in', 'Paris'),
+    ('Spain', 'has_it_government_located_in', 'Madrid'),
+    ('Italy', 'has_it_government_located_in', 'Roma'),
+    ('Germany', 'has_it_government_located_in', 'Berlin'),
+    ('UK', 'has_capital', 'London'),
+    ('France', 'has_capital', 'Paris'),
+    ('Spain', 'has_capital', 'Madrid'),
+    ('Italy', 'has_capital', 'Roma'),
+    ('Germany', 'has_capital', 'Berlin'),
+    ('UK', 'main_city_is', 'London'),
+    ('France', 'main_city_is', 'Paris'),
+    ('Spain', 'main_city_is', 'Madrid'),
+    ('Italy', 'main_city_is', 'Roma'),
+    ('Germany', 'main_city_is', 'Berlin'),
+    ('UK', 'economical_centre_is', 'London'),
+    ('France', 'economical_centre_is', 'Paris'),
+    ('Spain', 'economical_centre_is', 'Madrid'),
+    ('Italy', 'economical_centre_iss', 'Roma'),
+    ('Germany', 'economical_centre_is', 'Berlin'),
+]

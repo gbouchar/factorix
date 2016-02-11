@@ -1,8 +1,7 @@
 
 from collections import defaultdict
-
 import tensorflow as tf
-import naga.factorix as fx
+from naga.shared.tf_addons import tf_eval
 
 
 def bin_tuples_by_type(tuples):
@@ -62,13 +61,13 @@ def loss_func(pred, gold, type_of_loss, emb_norm=0):
     :param pred: prediction
     :param gold: ground truth
     :return: tensor the same size as the pred tensor with corresponding element-wise losses
-    >>> print(fx.tf_eval(loss_func(tf.Variable(1.0), tf.Variable(2.0), 'quadratic')))
+    >>> print(tf_eval(loss_func(tf.Variable(1.0), tf.Variable(2.0), 'quadratic')))
     0.5
-    >>> print(fx.tf_eval(loss_func(tf.Variable(0.0), tf.Variable(0.), 'logistic')))
+    >>> print(tf_eval(loss_func(tf.Variable(0.0), tf.Variable(0.), 'logistic')))
     0.693147
-    >>> print(fx.tf_eval(loss_func(tf.Variable(0.0), tf.Variable(1.), 'logistic')))
+    >>> print(tf_eval(loss_func(tf.Variable(0.0), tf.Variable(1.), 'logistic')))
     0.693147
-    >>> print(fx.tf_eval(loss_func(tf.Variable(1.0), tf.Variable(1.), 'logistic')))
+    >>> print(tf_eval(loss_func(tf.Variable(1.0), tf.Variable(1.), 'logistic')))
     0.313262
     """
     if isinstance(pred, tuple):  # when a second argument is given, it is added to the loss (e.g. regularization)
@@ -96,7 +95,7 @@ def loss_func_quadratic(pred, gold):
     :param gold: ground truth
     :return: tensor the same size as the pred tensor with corresponding element-wise losses
 
-    >>> print(fx.tf_eval(loss_func_quadratic(tf.Variable(1.0), tf.Variable(1.0))))
+    >>> print(tf_eval(loss_func_quadratic(tf.Variable(1.0), tf.Variable(1.0))))
     0.0
 
     """
@@ -145,9 +144,9 @@ def test_loss_func_softmax():
     """
     pred = tf.Variable([[1.1, 2.1, 3.9], [-1.0, -0.5, -2.1], [1.1, 2.1, -3.9], [-1.0, 0.5, -2.1]])
     gold = tf.Variable([1, 2, 1, 0])
-    print(fx.tf_eval(loss_func_softmax(pred, gold)))
+    print(tf_eval(loss_func_softmax(pred, gold)))
     gold = tf.Variable([2, 1, 0, 1])
-    print(fx.tf_eval(loss_func_softmax(pred, gold)))
+    print(tf_eval(loss_func_softmax(pred, gold)))
 
 
 if __name__ == '__main__':
