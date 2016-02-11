@@ -5,9 +5,10 @@ import warnings
 
 import tensorflow as tf
 
-from factorix.scoring import sparse_multilinear_dot_product, generalised_multilinear_dot_product
-from factorix.losses import loss_func, get_loss_type
-
+#from factorix.scoring import sparse_multilinear_dot_product, generalised_multilinear_dot_product
+#from factorix.losses import loss_func, get_loss_type
+from scoring import sparse_multilinear_dot_product, sparse_multilinear_dot_product
+from losses import loss_func, get_loss_type
 
 def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
     emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
