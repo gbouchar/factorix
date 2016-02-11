@@ -1,13 +1,12 @@
 import random
 import numpy as np
-import tensorflow as tf
-from factorix.scoring import sparse_multilinear_dot_product, \
-multilinear_square_product, generalised_multilinear_dot_product
-from factorix.losses import loss_func, get_loss_type
+from collections import namedtuple
 import warnings
 
-# from read_arit import read_arit_dialogs, dialog2txt
-# from naga.members.guillaume.NeuralPredictor import NeuralPredictor, IndependentSlicer, accuracy
+import tensorflow as tf
+
+from factorix.scoring import sparse_multilinear_dot_product, generalised_multilinear_dot_product
+from factorix.losses import loss_func, get_loss_type
 
 
 def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
@@ -32,7 +31,8 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
                      loss_types=('quadratic',),
                      negative_prop=0.0, n_emb=None,
                      minibatch_generator=None, verbose=True,
-                     scoring=None, negative_sample=False, tf_optim=None, emb0=None):
+                     scoring=None, negative_sample=False, tf_optim=None, emb0=None, n_ent = None,
+                     bigram = False, dictionaries = None):
 
     """
     Factorize a knowledge base using a TensorFlow model
@@ -85,16 +85,18 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
     tf_optim = tf_optim if tf_optim is not None else tf.train.AdamOptimizer(learning_rate=0.1)
 
     inputs, outputs, minibatch_generator = simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq,
-                                                                  negative_prop)
+                                                                  negative_prop, n_ent, bigram, dictionaries)
 
     # the scoring function is usually a dot product between embeddings
     if scoring is None:
         preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
+        #preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
+    
     # elif scoring == generalised_multilinear_dot_product_scorer:  # commented because it can be done externally
     #     preds, params = scoring(inputs, rank=rank, n_emb=n_emb, emb0=emb0,
     #                             norm_scalers=norm_scalers)
     else:
-        preds, params = scoring(inputs)
+        preds, params = scoring(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
 
     # Minimize the loss
     loss_ops = {}
@@ -120,13 +122,23 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
     return final_params
 
 
-def simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq, negative_prop):
+def simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq, negative_prop, n_ent,
+                           bigram = False, dictionaries = None):
     # the generator of minibatches
     loss_type = get_loss_type(tuples[0][1])  # takes the first tuple as a type example
-    minibatch_generator, n_emb, arity,  minibatch_size = \
-        tuples_minibatch_generator(tuples, minibatch_size=minibatch_size, n_iter=n_iter, eval_freq=eval_freq,
-                                       negative_prop=negative_prop, loss_type=loss_type)
+    
+    if not bigram:
+        minibatch_generator, n_emb, arity,  minibatch_size = \
+            tuples_minibatch_generator(tuples, minibatch_size=minibatch_size, n_iter=n_iter, eval_freq=eval_freq,
+                                           negative_prop=negative_prop, loss_type=loss_type, n_ent=n_ent)
 
+    if bigram:
+        minibatch_generator, n_emb, arity,  minibatch_size = \
+            bigram_minibatch_generator(tuples, minibatch_size=minibatch_size, n_iter=n_iter, eval_freq=eval_freq,
+                                           negative_prop=negative_prop, loss_type=loss_type, n_ent=n_ent,
+                                           dictionaries = dictionaries)
+
+    # print("n_iter",n_iter)
     # model: inputs, outputs and parameters
     inputs = tf.placeholder("int32", [(1+negative_prop) * minibatch_size, arity])
     outputs = tf.placeholder("float32", [(1+negative_prop) * minibatch_size])
@@ -135,11 +147,14 @@ def simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq, negative_p
     return inputs, outputs, minibatch_generator
 
 
-def tuples_minibatch_generator(tuples, minibatch_size=100, n_iter=1000, eval_freq=50, negative_prop = 0.0, loss_type=0):
+def tuples_minibatch_generator(tuples, minibatch_size=100, n_iter=1000, eval_freq=50, 
+                               negative_prop = 0.0, loss_type=0, n_ent = None):
     train_inputs = np.array([x for x, y in tuples])
     train_outputs = np.array([y for x, y in tuples])
+    # print( "train_inputs.shape", train_inputs.shape)
     arity = train_inputs.shape[1]
-    n_ent = np.max(train_inputs) + 1
+    if n_ent == None:
+        n_ent = np.max(train_inputs) + 1
     n_t = train_inputs.shape[0]
     minibatch_size = min(minibatch_size, n_t)  # for small datasets
     minibatch_type = loss_type
@@ -193,6 +208,130 @@ def tuples_minibatch_generator(tuples, minibatch_size=100, n_iter=1000, eval_fre
                 epoch += 1
 
     return next_minibatch, n_ent, arity, minibatch_size
+
+
+
+
+
+# Bigram minibatch generator. Identical to tuples_minibatch_generator, but different negative sampling.
+def bigram_minibatch_generator(tuples, minibatch_size=100, n_iter=1000, eval_freq=50, 
+                               negative_prop = 0.0, loss_type=0, n_ent = None,
+                               dictionaries = None):
+                                                                   
+        
+    # use dictionaries for negative sampling:
+    (Global_Dict, D_ent, D_rel) = dictionaries
+    Tuple = namedtuple("Tuple", ["subj", "rel", "obj"])
+
+    
+    train_inputs = np.array([x for x, y in tuples])
+    train_outputs = np.array([y for x, y in tuples])
+    print( "train_inputs.shape", train_inputs.shape)
+    arity = train_inputs.shape[1]       # tuple length
+    if n_ent == None:
+        #n_ent = np.max(train_inputs) + 1
+        n_ent = len(D_ent)
+    n_t = train_inputs.shape[0]
+    minibatch_size = min(minibatch_size, n_t)  # for small datasets
+    minibatch_type = loss_type
+
+    if negative_prop > 0:  # Pre-allocation, avoid memory alloc at each batch generation
+        new_train_inputs = np.empty( (minibatch_size * (negative_prop + 1), train_inputs.shape[1]))
+        new_train_outputs = np.empty( minibatch_size * (negative_prop + 1))
+
+    def next_minibatch():  # a generator function
+        # nonlocal train_inputs, train_outputs, minibatch_size, n_iter, eval_freq, n_t
+        # global train_inputs, train_outputs, minibatch_size, eval_freq, n_t
+        epoch = 0
+        while epoch < n_iter:
+            minibatch_indices, n_rem = create_minibatch_indices(n_t, minibatch_size)
+            
+            for ids in minibatch_indices:
+                
+                if negative_prop > 0:  # Negative generation    
+                    # TODO
+                    this_batch_size = len(ids)  # Manage shorter batches (sometimes last ones are shorter)
+
+                    #Pre copying everyting as many times as necessary
+                    new_train_inputs[:(this_batch_size*(negative_prop+1)),:] = np.tile(train_inputs[ids,:],(negative_prop + 1,1))
+                    new_train_outputs[:(this_batch_size*(negative_prop+1))] = np.tile(train_outputs[ids], negative_prop + 1)
+                    
+                    #Pre-sample everything, faster
+                    rdm_entities = np.random.randint(1, n_ent, this_batch_size * negative_prop)
+                    rdm_choices = np.random.random(this_batch_size * negative_prop)
+
+                    for i in range(this_batch_size):
+                    #for i in range(np.floor(this_batch_size/float(negative_prop))):
+                        
+                        for j in range(negative_prop):
+                            cur_idx = i * negative_prop + j
+
+                            if rdm_choices[cur_idx] < 0.5:
+                                subj_idx = rdm_entities[cur_idx]
+                                new_train_inputs[this_batch_size + cur_idx,0] = subj_idx
+                                
+                                # adapt bigram tuple entries accordingly, first get strings
+                                subj_str = D_ent[subj_idx]
+                                verb_str = D_rel[new_train_inputs[this_batch_size + cur_idx,1]]
+                                obj_str = D_ent[new_train_inputs[this_batch_size + cur_idx,2]]
+                                
+                                # now use strings to obtain pairwise interaction entries                        
+                                i01 = Global_Dict[Tuple(subj=subj_str, rel=verb_str, obj=None)]
+                                i02 = Global_Dict[Tuple(subj=subj_str, rel=None, obj=obj_str)]
+                                
+                                # set tuple entries for interactions
+                                new_train_inputs[this_batch_size + cur_idx,3] = i01
+                                new_train_inputs[this_batch_size + cur_idx,5] = i02
+                                
+                                
+                                 
+                            else:
+                                obj_idx = rdm_entities[cur_idx]
+                                new_train_inputs[this_batch_size + cur_idx, 2 ] = obj_idx
+
+                                # adapt bigram tuple entries accordingly, first get strings 
+                                subj_str = D_ent[new_train_inputs[this_batch_size + cur_idx,0]]
+                                verb_str = D_rel[new_train_inputs[this_batch_size + cur_idx,1]]
+                                obj_str = D_ent[obj_idx]
+                                
+                                # now use strings to obtain pairwise interaction entries                        
+                                i02 = Global_Dict[Tuple(subj=subj_str, rel=None, obj=obj_str)]
+                                i12 = Global_Dict[Tuple(subj=None, rel=verb_str, obj=obj_str)]
+                                
+                                # set tuple entries for interactions
+                                new_train_inputs[this_batch_size + cur_idx,5] = i02
+                                new_train_inputs[this_batch_size + cur_idx,4] = i12
+                                
+
+                            new_train_outputs[this_batch_size + cur_idx] = 0.0
+
+                    minibatch_inputs = new_train_inputs[:this_batch_size * (negative_prop +1),:] #truncate arrays in case of shorter batch
+                    minibatch_outputs = new_train_outputs[:this_batch_size * (negative_prop +1)]
+                else:  # No negative generation
+                    minibatch_inputs = train_inputs[ids, :]
+                    minibatch_outputs = train_outputs[ids]
+
+                eval_step = epoch % eval_freq == 0 or epoch == n_iter - 1
+                yield epoch, eval_step, (minibatch_inputs, minibatch_outputs, minibatch_type)
+                epoch += 1
+
+    return next_minibatch, n_ent, arity, minibatch_size
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # if negative_sampling:
     #     neg_inputs, gold_neg = sample_negatives(n_neg, n_ent, arity, supporting_examples=sel_train_inputs,
@@ -275,9 +414,9 @@ def create_minibatch_indices(n, minibatch_size):
     :param minibatch_size: size of the minibatches (must be lower than n)
     :return: (list of random indices, number of random duplicate indices in the last minibatch to complete it)
     """
-    all_indices = np.random.permutation(n)
-    n_steps = (n - 1) // minibatch_size + 1
-    n_rem = n_steps * minibatch_size - n
+    all_indices = np.random.permutation(n)  #shuffle order randomly
+    n_steps = (n - 1) // minibatch_size + 1 #how many batches fit per epoch
+    n_rem = n_steps * minibatch_size - n    #remainder
     if n_rem > 0:
         inds_to_add = np.random.randint(0, n_rem, size=n_rem)
         all_indices = np.concatenate((all_indices, inds_to_add))
