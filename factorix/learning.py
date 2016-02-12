@@ -1,119 +1,96 @@
 import numpy as np
-from collections import namedtuple
 import warnings
 
 import tensorflow as tf
 
-# from factorix.scoring import sparse_multilinear_dot_product, generalised_multilinear_dot_product
-from factorix.losses import loss_func, get_loss_type
+from tfrnn.hooks import LoadModelHook, SpeedHook, SaveModelHook, LossHook, AccuracyHook
+
 from factorix.dataset_reader import mat2tuples
-from factorix.demos.toy_examples import toy_factorization_problem, svd_factorize_matrix
-from factorix.samplers import tuple_sampler, simple_tuple_generator
+from factorix.toy_examples import toy_factorization_problem, svd_factorize_matrix
+from factorix.samplers import tuple_sampler, feed_dict_sampler
+from factorix.losses import loss_func
 from factorix.scoring import multilinear_tuple_scorer
 
 
-def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000, eval_freq=100,
-                     loss_types=('quadratic',),
-                     negative_prop=0.0, n_emb=None,
-                     minibatch_generator=None, verbose=True,
-                     scoring=None, negative_sample=False, tf_optim=None, emb0=None, n_ent = None,
-                     bigram = False, dictionaries = None):
-
+def learn(loss_op, sampler, optimizer, hooks=(), max_epochs=500, variables=None):
     """
-    Factorize a knowledge base using a TensorFlow model
-    :param tuples: list of tuples representing a knowledge base. Types can be used
-    :param scoring: TensorFlow operator accepting 2 tensors as input and one as output ():
-        - input 1 is the embedding tensor. It has size [n_ent, rank] and contains float values
-        - input 2 is a tensor containing tuples of integer from a minibatch. It has size [minibatch_size, order]
-        and values range from 0 to n_ent-1
-        - output is a list of continuous values
-    :param tf_optim: TensorFlow model performing the optimization
-    :return: embeddings
 
-    Note about sparse_hermitian_product:
-    To recover the predictions, you must average the real and imaginary part because it is learn using this formula.
-    See the sparse_hermitian_product function with the 'real' default option. This is simpler in the real case when we
-    use the sparse_multilinear_dot_product function: we would replace hermitian_dot by dot(emb, emb.transpose())
+    Args:
+        loss_op: TensorFlow operator that computes the loss to minimize
+        sampler: sampler that generate dictionary inputs
+        optimizer: TensorFlow optimization object
+        hooks: functions that are called during training
+        max_epochs: maximal number of epochs through the data
+
+    Returns:
+
+    Example:
+
+    >>> it, (x, y) = feed_dict_sampler([([[1.0, 2]], [2.0]), ([[4, 5]], [6.5]), ([[7, 8]], [11])])
+    >>> w = tf.Variable(np.zeros((2, 1), dtype=np.float32))
+    >>> optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
+    >>> loss_op = tf.nn.l2_loss(tf.matmul(x, w) - y)
+    >>> w_opt = learn(loss_op, it, optimizer, hooks=[simple_hook], max_epochs=500, variables=[w])
+         0) Epoch    0: loss=2.0
+       100) Epoch   33: loss=0.00151753
+       200) Epoch   66: loss=0.001789
+       300) Epoch  100: loss=0.00755719
+       400) Epoch  133: loss=0.000480593
+       500) Epoch  166: loss=0.00038268
+       600) Epoch  200: loss=0.00117665
+       700) Epoch  233: loss=6.05594e-05
+       800) Epoch  266: loss=3.57539e-05
+       900) Epoch  300: loss=8.13957e-05
+      1000) Epoch  333: loss=3.36935e-06
+      1100) Epoch  366: loss=1.4538e-06
+      1200) Epoch  400: loss=2.3936e-06
+      1300) Epoch  433: loss=7.79419e-08
+      1400) Epoch  466: loss=2.36396e-08
+    >>> w_opt
+    [array([[ 1. ],
+           [ 0.5]], dtype=float32)]
 
     # demo of a rectangular matrix factorization with square loss:
-    >>> y_mat = toy_factorization_problem(n=7, m=6, rk=4, noise=1)
-    >>> emb0 = svd_factorize_matrix(y_mat, rank=4)  # exact svd solution
-    >>> u2 = factorize_tuples(mat2tuples(y_mat), 4, emb0=emb0, n_iter=500, verbose=False)[0]
-    >>> x_mat_est2 = np.dot(u2[:7], u2[7:].T)  # the initial matrix
-    >>> np.linalg.norm(emb0[:7].dot(emb0[7:].T)-x_mat_est2) < 1e-3
-    True
-
-
-    # demo of a symmetric square matrix factorization with square loss:
-    # >>> n = 5
-    # >>> mat = random_symmetric_real_matrix(n, rank=4)
-    # >>> eig_sol = eig_approx(mat, rank=2)
-    # >>> embeddings = factorize_tuples(mat2tuples(mat, common_types=True), rank=2, verbose=False, n_iter=100)
-    # >>> h = hermitian_dot(embeddings, embeddings)
-    # >>> sgd_sol = 0.5 * (h[0] + h[1])
-    # >>> np.linalg.norm(eig_sol - sgd_sol)<1e3
+    # # >>> y_mat = toy_factorization_problem(n=7, m=6, rk=4, noise=1)
+    # # >>> emb0 = svd_factorize_matrix(y_mat, rank=4)  # exact svd solution
+    # # >>> sampler = tuple_sampler(mat2tuples(y_mat), minibatch_size=42)
+    # # >>> params = learn(dot_product, sampler, max_epochs=500)
+    # # >>> x_mat_est2 = np.dot(u2[:7], u2[7:].T)  # the initial matrix
+    # # >>> np.linalg.norm(emb0[:7].dot(emb0[7:].T)-x_mat_est2) < 1e-3
     # True
     """
-
-    if isinstance(tuples, tuple) and len(tuples) == 2:
-
-        warnings.warn('Providing tuples as (inputs, outputs) is deprecated. '
-                      'Use [(input_1, output_1), ..., (input_n, output_n)] instead'
-                      'You should provide them as zip(inputs, outputs)')
-        tuples = [x for x in zip(tuples[0], tuples[1])]
-
-    if scoring is None:
-        if n_emb is None:
-            n_emb = np.max([np.max(x) for x, y in tuples]) + 1
-
-    # the TensorFlow optimizer
-    tf_optim = tf_optim if tf_optim is not None else tf.train.AdamOptimizer(learning_rate=0.1)
-
-    if isinstance(tuples, list):
-        inputs, outputs, minibatch_generator = simple_tuple_generator(tuples, minibatch_size, n_iter, eval_freq,
-                                                                      negative_prop, n_ent, bigram, dictionaries)
-
-    # the scoring function is usually a dot product between embeddings
-    if scoring is None:
-        preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
-        #preds, params = multilinear_tuple_scorer(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
-
-    # elif scoring == generalised_multilinear_dot_product_scorer:  # commented because it can be done externally
-    #     preds, params = scoring(inputs, rank=rank, n_emb=n_emb, emb0=emb0,
-    #                             norm_scalers=norm_scalers)
-    else:
-        preds, params = scoring(inputs, rank=rank, n_emb=n_emb, emb0=emb0)
-
-    # Minimize the loss
-    loss_ops = {}
-    train_ops = {}
-    for m in loss_types:
-        loss_ops[m] = tf.reduce_mean(loss_func(preds, outputs, m))
-        train_ops[m] = tf_optim.minimize(loss_ops[m])
-
+    if variables is None:
+        variables = tf.trainable_variables()
+    minimization_op = optimizer.minimize(loss_op)
     # Launch the graph.
-    with tf.Session() as sess:  # we close the session at the end of the training
-        sess.run(tf.initialize_all_variables())
-        for epoch, eval_step, (minibatch_inputs, minibatch_outputs, minibatch_type) in minibatch_generator():
-            feed = {inputs: minibatch_inputs, outputs: minibatch_outputs}
-            if eval_step:
-                train_losses = {}
-                for m in loss_types:
-                    _, train_losses[m] = sess.run([train_ops[m], loss_ops[m]], feed_dict=feed)
-                if verbose:
-                    print(epoch, train_losses)
-            else:
-                sess.run(train_ops[minibatch_type], feed_dict=feed)
-        final_params = sess.run(params)
+    with tf.Session() as session:  # we close the session at the end of the training
+        session.run(tf.initialize_all_variables())
+        epoch = 0
+        iteration = 0
+        while epoch < max_epochs:
+            for feed_dict in sampler:
+                _, current_loss = session.run([minimization_op, loss_op], feed_dict=feed_dict)
+                for hook in hooks:
+                    hook(session, epoch, iteration, loss_op, current_loss)
+                iteration += 1
+            for hook in hooks:  # calling post-epoch hooks
+                hook(session, epoch, None, loss_op, 0)
+            epoch += 1
+        final_params = session.run(variables)
     return final_params
 
 
+def simple_hook(session, epoch, iteration, loss_op, current_loss):
+    if iteration is not None and ((iteration % 100) == 0):
+        print("%6d) Epoch %4d: loss=%s" % (iteration, epoch, str(current_loss)))
+
+
 if __name__ == '__main__':
-    # test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=False)
-    # test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=True)
-    # test_learn_factorization(verbose=True)
-    import factorix.test.test_learn_factorization as t
-    t.test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=False)
-    # t.test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=True)
-    t.test_learn_factorization(verbose=True)
-    t.test_sparse_factorization(verbose=True)
+    y_mat = toy_factorization_problem(n=7, m=6, rk=4, noise=1)
+    rank = 2
+    batch_size = 42
+    sampler, (x, y) = feed_dict_sampler(tuple_sampler(mat2tuples(y_mat), minibatch_size=batch_size))
+    loss_op = tf.reduce_mean(loss_func(multilinear_tuple_scorer(x, rank=rank), y, 'quadratic'))
+    hooks = [simple_hook]
+    params = learn(loss_op, sampler, tf.train.AdamOptimizer(learning_rate=0.1), hooks, max_epochs=500)
+
