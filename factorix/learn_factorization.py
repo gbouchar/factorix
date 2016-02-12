@@ -6,11 +6,11 @@ import warnings
 
 import tensorflow as tf
 
-from factorix.losses import loss_func, get_loss_type
-from factorix.dataset_reader import mat2tuples
-from factorix.toy_examples import toy_factorization_problem, svd_factorize_matrix
-from factorix.samplers import tuple_sampler, simple_tuple_generator
-from factorix.scoring import multilinear_tuple_scorer
+from losses import loss_func, get_loss_type
+from dataset_reader import mat2tuples
+from toy_examples import toy_factorization_problem, svd_factorize_matrix
+from samplers import tuple_sampler, simple_tuple_generator
+from scoring import multilinear_tuple_scorer
 
 
 
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     # test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=False)
     # test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=True)
     # test_learn_factorization(verbose=True)
-    import factorix.test.test_learn_factorization as t
+    import test.test_learn_factorization as t
     t.test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=False)
     # t.test_tuples_factorization_rectangular_matrix(verbose=True, hermitian=True)
     t.test_learn_factorization(verbose=True)

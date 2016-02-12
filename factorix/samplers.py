@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 from collections import namedtuple
 
-from factorix.losses import get_loss_type
+from losses import get_loss_type
 #from naga.shared.math import unique_rows, repeat_equally
 from naga.shared.math import unique_rows, repeat_equally
 

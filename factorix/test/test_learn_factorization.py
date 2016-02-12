@@ -1,10 +1,10 @@
 import numpy as np
 
-from factorix.hermitian import hermitian_tuple_scorer, hermitian_dot
-from factorix.toy_examples import toy_factorization_problem, svd_factorize_matrix
-from factorix.learn_factorization import factorize_tuples
-from factorix.dataset_reader import mat2tuples
-from factorix.samplers import tuple_sampler
+from hermitian import hermitian_tuple_scorer, hermitian_dot
+from toy_examples import toy_factorization_problem, svd_factorize_matrix
+from learn_factorization import factorize_tuples
+from dataset_reader import mat2tuples
+from samplers import tuple_sampler
 
 
 def test_tuples_factorization_rectangular_matrix(verbose=False, hermitian=False):
