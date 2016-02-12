@@ -4,6 +4,7 @@ import tensorflow as tf
 from collections import namedtuple
 
 from factorix.losses import get_loss_type
+#from naga.shared.math import unique_rows, repeat_equally
 from naga.shared.math import unique_rows, repeat_equally
 
 np.set_printoptions(precision=3)
@@ -48,7 +49,8 @@ def positive_minibatch_generator(tuples, minibatch_size):
         yield inputs[ids, :], outputs[ids]
 
 
-def generate_negatives(input_pos, n, idx_ranges: list((int, str))):
+#def generate_negatives(input_pos, n, idx_ranges: list((int, str))):
+def generate_negatives(input_pos, n, idx_ranges):
     """
     Sample negative tuples by adding noise to a list of positive tuples
     Args:

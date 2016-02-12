@@ -1,3 +1,5 @@
+#from __future__ import relative_imports
+
 import numpy as np
 from collections import namedtuple
 import warnings
@@ -9,6 +11,7 @@ from factorix.dataset_reader import mat2tuples
 from factorix.toy_examples import toy_factorization_problem, svd_factorize_matrix
 from factorix.samplers import tuple_sampler, simple_tuple_generator
 from factorix.scoring import multilinear_tuple_scorer
+
 
 
 def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000, eval_freq=100,
