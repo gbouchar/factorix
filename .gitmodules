@@ -1,6 +1,3 @@
 [submodule "naga-repo"]
 	path = naga-repo
 	url = https://github.com/uclmr/naga
-[submodule "tfrnn-repo"]
-	path = tfrnn-repo
-	url = https://github.com/uclmr/tfrnn
