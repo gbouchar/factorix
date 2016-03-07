@@ -10,6 +10,8 @@ from collections import defaultdict
 import numpy as np
 import re
 
+NEW_ID = 0  # index used to identify new or missing entities
+
 class Indexer:
     """
     Mapping from strings to integers and vice versa.
