@@ -55,7 +55,7 @@ def get_loss_type(x):
         raise ValueError('Invalid type ' + x.__class__())
 
 
-def loss_func(pred, gold, type_of_loss, emb_norm=0):
+def loss_func(pred, gold, type_of_loss, emb_norm=None):
     """
     Quadratic loss function
     :param pred: prediction
@@ -85,7 +85,26 @@ def loss_func(pred, gold, type_of_loss, emb_norm=0):
         loss = loss_func_softmax(pred, gold)
     else:
         raise ValueError
-    return loss + emb_norm
+    if emb_norm is not None:
+        return loss + emb_norm
+    else:
+        return loss
+
+
+def total_loss_quadratic(pred, gold):
+    return tf.nn.l2_loss(pred - gold)
+
+
+def total_loss_logistic(pred, gold):
+    return tf.reduce_sum(loss_func_logistic(pred, gold), 0)
+
+
+def loss_quadratic_grad(pred, gold):
+    return pred - gold
+
+
+def loss_logistic_grad(pred, gold):
+    return tf.sigmoid(pred * (1.0 - 2.0 * gold))
 
 
 def loss_func_quadratic(pred, gold):

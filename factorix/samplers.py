@@ -4,48 +4,14 @@ import tensorflow as tf
 from collections import namedtuple
 
 from factorix.losses import get_loss_type
+from factorix.learning import AutoReset
 from naga.shared.math import unique_rows, repeat_equally
 
 np.set_printoptions(precision=3)
 
-def create_minibatch_indices(n, minibatch_size):
-    """
-    :param n: total number of indices from which to pick from
-    :param minibatch_size: size of the minibatches (must be lower than n)
-    :return: (list of random indices, number of random duplicate indices in the last minibatch to complete it)
-    """
-    all_indices = np.random.permutation(n)  # shuffle order randomly
-    n_steps = (n - 1) // minibatch_size + 1  # how many batches fit per epoch
-    n_rem = n_steps * minibatch_size - n  # remainder
-    if n_rem > 0:
-        inds_to_add = np.random.randint(0, n_rem, size=n_rem)
-        all_indices = np.concatenate((all_indices, inds_to_add))
-    return np.split(all_indices, n_steps), n_rem
 
 
-def positive_minibatch_generator(tuples, minibatch_size):
-    """
 
-    Args:
-        tuples: tuples
-        minibatch_size:
-
-    Returns:
-        an iterator over (input, output) where input is a 2D array with 3
-
-    Examples
-        >>> t = [((1, 2), 1), ((2, 3), 2), ((3, 1), 3), ((4, 2), 4), ((5, 4), 5), ((5, 1), 6), ((3, 5), 7)]
-        >>> [x.shape for x, y in positive_minibatch_generator(t, 3)]
-        [(3, 2), (3, 2), (3, 2)]
-        >>> [y.shape for x, y in positive_minibatch_generator(t, 3)]
-        [(3,), (3,), (3,)]
-    """
-    n = len(tuples)
-    minibatch_indices, n_rem = create_minibatch_indices(n, minibatch_size)
-    inputs = np.array([x for x, y in tuples])
-    outputs = np.array([y for x, y in tuples])
-    for ids in minibatch_indices:
-        yield inputs[ids, :], outputs[ids]
 
 
 def generate_negatives(input_pos, n, idx_ranges: list((int, str))):
@@ -116,86 +82,10 @@ def add_negatives(positives, n_negatives, idx_ranges):
         yield np.concatenate([input_pos, input_neg]), np.concatenate([output_pos, output_neg])
 
 
-class AutoReset(object):
-    """ Enables an iterator to be automatically reset when it is called after a StopIteration exception
-    """
-    def __init__(self, iterator, *args):
-        """
-        Initializer
-        Args:
-            iterator: function that creates the iterator
-            *args: arguments to pass to the iterator
-
-        Returns:
-            An iterator that can be called again
-
-        """
-        self.iterator = iterator
-        self.args = args
-
-    def __iter__(self):
-        return self.iterator(*self.args)
 
 
-def feed_dict_sampler(iterable, names=None, placeholders=None):
-    """
-    Sampler that generate a dictionary where keys are TensorFlow placeholders and values are the iterable values
-    Args:
-        iterator: an iterable of multiple values (one per entry to feed)
-        names: name of the placeholders that are generated
-        placeholders: list of placeholders
 
-    Returns: 2 outputs
-        1. An iterable generating a dictionary feed_dict to feed a TensorFlow model (using session.run(op, feed_dict))
-        2. An list of TensorFlow placeholders that can be used to create models
-
-    Examples:
-        # just sums arrays given as input
-        >>> it, (x, y) = feed_dict_sampler([([1, 2], [3]), ([4, 5], [6]), ([7, 8], [9])])
-        >>> sess = tf.Session()
-        >>> [sess.run(tf.reduce_sum(x) + y, feed_dict=f) for f in it]
-        [array([ 6.], dtype=float32), array([ 15.], dtype=float32), array([ 24.], dtype=float32)]
-        >>> [sess.run(tf.reduce_sum(x) + y, feed_dict=f) for f in it]
-        [array([ 6.], dtype=float32), array([ 15.], dtype=float32), array([ 24.], dtype=float32)]
-        >>> sess.close()
-
-        # learns a linear regression
-        >>> it, (x, y) = feed_dict_sampler([([[1.0, 2]], [2.0]), ([[4, 5]], [6.5]), ([[7, 8]], [11])])
-        >>> w = tf.Variable(np.zeros((2, 1), dtype=np.float32))
-        >>> optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
-        >>> loss = tf.nn.l2_loss(tf.matmul(x, w) - y)
-        >>> min_loss = optimizer.minimize(loss)
-        >>> sess = tf.Session()
-        >>> sess.run(tf.initialize_all_variables())
-        >>> losses = [[sess.run([min_loss, loss], feed_dict=f)[1] for f in it] for t in range(1000)]
-        >>> np.hstack([np.array(losses[i-1]) for i in [1,10,100,1000]])
-        array([  2.000e+00,   1.568e+01,   3.423e+01,   2.882e-02,   8.828e-06,
-                 1.218e-01,   7.667e-03,   8.059e-04,   1.189e-03,   0.000e+00,
-                 4.547e-13,   7.276e-12], dtype=float32)
-        >>> sess.run(w)
-        array([[ 1. ],
-               [ 0.5]], dtype=float32)
-        >>> sess.close()
-
-        # >>> [[f for f in it] for t in range(100)]
-    """
-    first_items = next(iter(iterable))  # if there is a fixed size input, the first item is enough to infer shape
-    if placeholders is None:  # initialize the placeholders in the first iteration
-        if names is None:
-            names = ['Placeholder%d' % i for i in range(len(first_items))]
-        placeholders = []
-        for a, s in zip(first_items, names):
-            if isinstance(a, str):  # just in case the input is a string, there is a TensorFlow type for that
-                placeholders.append(tf.placeholder(tf.string, 1, name=s))
-            else:  # most of the time, an array-like is provided
-                a = np.array(a, dtype=np.float32)  # just in case the input is not an array
-                placeholders.append(tf.placeholder(a.dtype.name, a.shape, name=s))
-
-    dict_iterable = AutoReset(lambda: map(lambda items: dict(zip(placeholders, items)), iter(iterable)))
-    return dict_iterable, placeholders
-
-
-def tuple_sampler(tuples, minibatch_size, prop_negatives=0.5, idx_ranges=None):
+def positive_and_negative_tuple_sampler(tuples, minibatch_size, prop_negatives=0.5, idx_ranges=None):
     """
 
     Args:
@@ -214,7 +104,7 @@ def tuple_sampler(tuples, minibatch_size, prop_negatives=0.5, idx_ranges=None):
     Examples:
         >>> np.random.seed(1)
         >>> t = [((1, 2), 1), ((2, 3), 2), ((3, 1), 3), ((4, 2), 4), ((5, 4), 5)]
-        >>> [x for x in tuple_sampler(t, 3)]
+        >>> [x for x in positive_and_negative_tuple_sampler(t, 3)]
         [(array([[4, 2],
                [4, 0],
                [4, 0]]), array([ 4.,  0.,  0.])), (array([[3, 1],
@@ -233,9 +123,13 @@ def tuple_sampler(tuples, minibatch_size, prop_negatives=0.5, idx_ranges=None):
         idx_ranges = [(0, maxi)] * arity
     n_neg = np.floor(minibatch_size * prop_negatives) + (np.random.rand() < prop_negatives)
     n_pos = minibatch_size - n_neg
+    pos_gen = data_to_batches(tuples, n_pos)
 
-    for sample in add_negatives(positive_minibatch_generator(tuples, n_pos), n_negatives=n_neg, idx_ranges=idx_ranges):
-        yield sample
+    def new_generator():
+        for sample in add_negatives(pos_gen, n_negatives=n_neg, idx_ranges=idx_ranges):
+            yield sample
+
+    return AutoReset(new_generator)
 
 
 def product_range(shape):

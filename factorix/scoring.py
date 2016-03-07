@@ -11,7 +11,7 @@ from naga.shared.tf_addons import tf_eval
 def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
     emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
     embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
-    return sparse_multilinear_dot_product(embeddings, tuples_var), (embeddings,)
+    return multilinear(embeddings, tuples_var), (embeddings,)
 
 
 def generalised_multilinear_dot_product_scorer(tuples_var, rank=None, n_emb=None,
@@ -26,7 +26,7 @@ def generalised_multilinear_dot_product_scorer(tuples_var, rank=None, n_emb=None
            (embeddings, n_scalers)
 
 
-def sparse_multilinear_dot_product(emb, tuples, l2=0):
+def multilinear(emb, tuples, l2=0):
     """
     Compute the dot product of real vectors at selected embeddings
     Note that this model is called Cannonical Parafac (CP), and corresponds to the "distmult" model in some scientific
@@ -40,7 +40,7 @@ def sparse_multilinear_dot_product(emb, tuples, l2=0):
 
     >>> emb = [[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]
     >>> idx = tf.Variable([[0, 1], [1, 0], [0, 2], [2, 0], [1, 2], [2, 1]])
-    >>> g = sparse_multilinear_dot_product(emb, idx)
+    >>> g = multilinear(emb, idx)
     >>> print(tf_eval(g))
     [  4.   4.  15.  15.   6.   6.]
     """
@@ -52,6 +52,40 @@ def sparse_multilinear_dot_product(emb, tuples, l2=0):
     else:  # l2 regularization of the selected embeddings
         reg = l2 * tf.reduce_sum(tf.square(emb_sel))
         return pred, reg
+
+
+def multilinear_grad(emb: tf.Tensor, tuples: tf.Tensor, score=False, slot_dim=0) -> tf.Tensor:
+    tuple_shape = [d.value for d in tuples.get_shape()]
+    # if len(tuple_shape) > 2:
+    #     n = np.prod(tuple_shape[:-1])
+    #     tuples = tf.reshape(tuples, (n, -1))
+    # n = tuples.get_shape()[0].value
+    order = tuples.get_shape()[2].value
+    rank = emb.get_shape()[1].value
+    if order == 2:
+        if slot_dim == 0:
+            if score:
+                emb_sel = tf.gather(emb, tuples)
+                grad_score = tf.reshape(emb_sel[:, :, 1, :], tuple_shape[:-1] + [rank])
+                prod = tf.reduce_prod(emb_sel, 2)
+                preds = tf.reshape(tf.reduce_sum(prod, 2), tuple_shape[:-1])
+                return grad_score, preds
+    raise NotImplementedError('Todo')
+                # grad_score0 = tf.reverse(emb_sel, [False, True, False])  # reverse the row and column embeddings
+    #         prod = tf.reduce_prod(emb_sel, 1)
+    #         preds = tf.reshape(tf.reduce_sum(prod, 1), tuple_shape[:-1])
+    #
+    #     preds = tf.reshape(tf.reduce_sum(prod, 1), tuple_shape[:-1])
+    # else:  # derivative of a product
+    #     prod = tf.reduce_prod(emb_sel, 1)
+    #     grad_score0 = tf.tile(tf.reshape(prod, (n, 1, rank)), (1, order, 1)) / emb_sel
+    # grad_score = tf.reshape(grad_score0, tuple_shape + [rank])
+    # if score:
+    #         prod = tf.reduce_prod(emb_sel, 1)
+    #     preds = tf.reshape(tf.reduce_sum(prod, 1), tuple_shape[:-1])
+    #     return grad_score, preds
+    # else:
+    #     return grad_score
 
 
 def multilinear_square_product(emb, tuples, l2=0):
@@ -130,7 +164,7 @@ def generalised_multilinear_dot_product(params, tuples, l2=0):
 # def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
 #     emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
 #     embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
-#     return sparse_multilinear_dot_product(embeddings, tuples_var), (embeddings,)
+#     return multilinear(embeddings, tuples_var), (embeddings,)
 #
 #
 # def generalised_multilinear_dot_product_scorer(tuples_var, rank=None, n_emb=None,
