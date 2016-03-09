@@ -1,14 +1,17 @@
 # Test the larcqy model: l(a(r(c),q),y)
 
-
-from typing import Tuple
 import numpy as np
 import tensorflow as tf
-from naga.shared.learning import learn, data_to_batches, placeholder_feeder, feed_dict_sampler, OperatorHook
+from sklearn import metrics
+
+from naga.shared.learning import learn, data_to_batches, placeholder_feeder, feed_dict_sampler
+
 from factorix.Dictionaries import NEW_ID
 from factorix.losses import total_loss_quadratic, loss_quadratic_grad, total_loss_logistic
-from factorix.scoring import multilinear, multilinear_grad
-from naga.shared.tf_addons import tf_eval, tf_show, tf_debug_gradient
+from factorix.scoring import multilinear
+from factorix.learn_to_update import reader, answerer, vectorize_samples
+from naga.shared.tf_addons import tf_eval
+from factorix.evaluation import train_test_split
 
 
 def test_matrix_factorization(verbose=False):
@@ -27,17 +30,6 @@ def test_matrix_factorization(verbose=False):
         print(np.linalg.norm(mat_est - mat) ** 2)  # we should have recovered the low-rank matrix
     else:
         assert (np.linalg.norm(mat_est - mat) < 1e-3)
-
-
-def vectorize_samples(data):
-    arr = []
-    for d in data:
-        qc_data = np.array([[idx for idx in ex[0]] for ex in d[0]])
-        yc_data = np.array([ex[1] for ex in d[0]])
-        q_data = np.array([[idx for idx in ex[0]] for ex in d[1]])
-        y_data = np.array([ex[1] for ex in d[1]])
-        arr.append((qc_data, yc_data, q_data, y_data))
-    return arr
 
 
 def test_multitask_learning(verbose=False):
@@ -150,84 +142,8 @@ class MultiTaskReaderAnswerer(object):
         return x_mat.dot(emb_val[1:self.n_features + 1, :]).dot(emb_val[self.n_features + 1:, :].T) * step_size_val
 
 
-def reader(context: Tuple[tf.Variable, tf.Variable], emb0: tf.Variable, n_slots: int,
-           loss_grad=loss_quadratic_grad,
-           emb_update=multilinear_grad):
-    """
-    Read a series of data and update the embeddings accordingly
-    Args:
-        context:
-        emb0:
-        n_slots:
-        emb_update:
-
-    Returns:
-
-    """
-    slot_dim = 0
-    if context is None:  # empty contexts are not read
-        return emb0
-
-    context_inputs, context_ouputs = context
-    n_data, n_obs, order = [d.value for d in context_inputs.get_shape()]
-    rank = emb0.get_shape()[1].value
-    shift_indices = tf.constant(
-            n_slots * np.reshape(np.outer(range(n_data), np.ones(n_obs)), (n_data, n_obs)), dtype='int64')
-
-    step_size = tf.Variable(1.0, name='step_size', trainable=False)
-
-    grad_score, preds = emb_update(emb0, context_inputs, score=True)
-    update_strength = tf.tile(tf.reshape(loss_grad(preds, context_ouputs),
-                                         (n_data, n_obs, 1)), (1, 1, rank))
-
-    grad_loss = tf.reshape(grad_score, (n_data, n_obs, rank)) * update_strength
-
-    if False:  # legacy code that might not work (was not working anyway due to the scatter_add that need reset)
-        zeros0 = tf.Variable(np.zeros((n_data * n_slots, rank), dtype=np.float32),
-                                        name='initial_slot_embeddings', trainable=False)
-
-        zeros = tf.assign(zeros0, np.zeros((n_data * n_slots, rank), dtype=np.float32))
-        indices = context_inputs[:, :, slot_dim] + shift_indices
-        total_grad_loss = tf.reshape(tf.scatter_add(zeros, indices, grad_loss), (n_data, n_obs, n_slots, rank))
-        # could also try tf.dynamic_partition(data, context_inputs[:, :, slot_dim], num_partitions)
-    else:
-        one_hot = tf.Variable(np.eye(n_slots, n_slots, dtype=np.float32), trainable=False)
-        indic_mat = tf.gather(one_hot, context_inputs[:, :, slot_dim])  # shape: (n_data, n_obs, n_slots)
-        total_grad_loss = tf.batch_matmul(indic_mat, grad_loss, adj_x=True)
-
-    initial_slot_embs = tf.reshape(tf.tile(emb0[:n_slots, :], (n_data, 1)), (n_data, n_slots, rank))
-    return initial_slot_embs * 0 - total_grad_loss * step_size  # size of the output: (n_data, n_slots, rank)
-
-
-def answerer(embeddings, tuples: tf.Variable, scoring=multilinear):
-    """
-    Evaluate the score of tuples with embeddings that are specific to every data sample
-
-    Args:
-        embeddings (tf.Variable): embedding tensor with shape (n_data, n_slots, rank)
-        tuples: question tensor with int64 entries and shape (n_data, n_tuples, order)
-        scoring: operator that is used to compute the scores
-
-    Returns:
-        scores (tf.Tensor): scores tensor with shape (n_data, n_tuples)
-
-    """
-    n_data, n_slots, rank = [d.value for d in embeddings.get_shape()]
-    n_data, n_tuples, order = [d.value for d in tuples.get_shape()]
-
-    shift_indices = tf.constant(np.reshape(
-            np.outer(range(n_data), np.ones(n_tuples * n_slots)) * n_slots, (n_data, n_tuples, n_slots)), dtype='int64')
-
-    questions_shifted = tuples + shift_indices
-
-    preds = scoring(
-            tf.reshape(embeddings, (n_data * n_slots, rank)),
-            tf.reshape(questions_shifted, (n_data * n_tuples, order)))
-
-    return tf.reshape(preds, (n_data, n_tuples))
-
-
 def test_larcqy(verbose=False):
+
     # factorization of the parameters with multiple linear regressions
 
     # input_types = {'index', 'features'}
@@ -317,96 +233,163 @@ def test_larcqy(verbose=False):
         #     assert (np.linalg.norm(mat_est - y_mat) < 1e-3)
 
 
-def test_larcqy_logistic(verbose=False):
-    # factorization of the parameters with multiple linear regressions
-
+def toy_dual_supervision_data():
     # input_types = {'index', 'features'}
     input_types = {'index'}
     input_types = {'features'}
     n1, n2, d1, d2, rank_gold = 7, 6, 5, 4, 3
-    scoring = multilinear
-
 
     # random data generation
-    np.random.seed(1)
     emb_noise, noise = 1, 0
-    batch_size = n1 * n2
-    t = lambda x: np.round(x, 1)
+    t = lambda x: np.round(x, 3)
     data_emb1 = t(np.random.randn(n1, rank_gold) * emb_noise)
     data_emb2 = t(np.random.randn(n2, rank_gold) * emb_noise)
     feat_emb1 = t(np.random.randn(d1, rank_gold) * emb_noise)
     feat_emb2 = t(np.random.randn(d2, rank_gold) * emb_noise)
-    x1_mat = data_emb1.dot(feat_emb1.T)
-    x2_mat = data_emb2.dot(feat_emb2.T)
-    a1 = x1_mat.dot(feat_emb1) > 0
-    a2 = x2_mat.dot(feat_emb2) > 0
-    y_mat = a1.dot(a2.T) + np.random.randn(n1, n2) * noise > 0
+    x1_mat = data_emb1.dot(feat_emb1.T) > 0
+    x2_mat = data_emb2.dot(feat_emb2.T) > 0
+    a1 = data_emb1.dot(feat_emb1.T).dot(feat_emb1)
+    a2 = data_emb2.dot(feat_emb2.T).dot(feat_emb2)
+    y_mat = (a1.dot(a2.T) + np.random.randn(n1, n2) * noise) > 0
 
     # data stuff
     data = []
-    n_ents = 2
     for i in range(n1):
         for j in range(n2):
             inputs = []
             if 'features' in input_types:
                 inputs += [((0, k + 2), x1_mat[i, k]) for k in range(d1)] \
-                         + [((1, k + 2 + d1), x2_mat[j, k]) for k in range(d2)]
-                n_ents = d1 + d2 + 2
+                          + [((1, k + 2 + d1), x2_mat[j, k]) for k in range(d2)]
             if 'index' in input_types:
                 inputs += [((0, d1 + d2 + 2 + i), 1.0), ((1, d1 + d2 + 2 + n1 + j), 1.0)]
-                n_ents = d1 + d2 + n1 + n2 + 2
             outputs = [((0, 1), y_mat[i, j])]
             data.append((inputs, outputs))
+            # [print(d) for d in data]
+    emb0_val = np.concatenate((np.zeros((2, rank_gold)), feat_emb1, feat_emb2))
+    return data, rank_gold, emb0_val
+
+
+def machine_reading_sampler(data, batch_size=None, n_ents=None):
     data_arr = vectorize_samples(data)
-    batches = data_to_batches(data_arr, batch_size, dtypes=[np.int64, np.float32, np.int64, np.float32])
-    if False:
+    if batch_size is not None:
+        batches = data_to_batches(data_arr, batch_size, dtypes=[np.int64, np.float32, np.float32, np.int64, np.float32])
         qc = tf.placeholder(np.int64, (batch_size, n_ents, 2), name='question_in_context')
         yc = tf.placeholder(np.float32, (batch_size, n_ents), name='answer_in_context')
+        wc = tf.placeholder(np.float32, (batch_size, n_ents), name='answer_in_context')
         q = tf.placeholder(np.int64, (batch_size, 1, 2), name='question')
         y = tf.placeholder(np.float32, (batch_size, 1), name='answer')
-        sampler = placeholder_feeder((qc, yc, q, y), batches)
-        sampler = [x for x in sampler]
+        sampler = placeholder_feeder((qc, yc, wc, q, y), batches)
     else:
-        qc0, yc0, q0, y0 = [x for x in batches][0]
-        # print(qc0, yc0, q0, y0)
-        qc = tf.Variable(qc0)
-        yc = tf.Variable(yc0)
-        q = tf.Variable(q0)
-        y = tf.Variable(y0)
+        batches = data_to_batches(data_arr, len(data), dtypes=[np.int64, np.float32, np.float32, np.int64, np.float32])
+        qc0, yc0, wc0, q0, y0 = [x for x in batches][0]
+        qc = tf.Variable(qc0, trainable=False)
+        yc = tf.Variable(yc0, trainable=False)
+        wc = tf.Variable(wc0, trainable=False)
+        q = tf.Variable(q0, trainable=False)
+        y = tf.Variable(y0, trainable=False)
+        sampler = None
+    return (qc, yc, wc, q, y), sampler
 
+
+def embedding_updater_model(variables, rank,
+                            init_params=None,
+                            n_ents=None,
+                            init_noise=0.0,
+                            loss=total_loss_logistic,
+                            scoring = multilinear,
+                            reg=0.0):
+
+    qc, yc, wc, q, y = variables
     # model definition
-    rank = min(rank_gold, max(min(n1, n2), min(d1, d2)))
-    print(rank)
-    if False:
-        emb0_val = np.concatenate((np.zeros((2, rank)), feat_emb1, feat_emb2))
-        emb0_val += np.random.randn(n_ents, rank) * 0.1
-        # emb0_val = np.round(emb0_val, 1)
+    # initialization
+    if init_params is not None:
+        emb0_val = init_params[0]
+        emb0_val += np.random.randn(n_ents, rank) * init_noise
     else:
         emb0_val = np.random.randn(n_ents, rank)
-    emb0 = tf.constant(emb0_val.tolist(), dtype=np.float32, shape=(n_ents, rank))
-    loss = total_loss_logistic
+    emb0 = tf.Variable(np.array(emb0_val, dtype=np.float32))
 
-    # reading step
-    emb1 = reader(emb0=emb0, context=(qc, yc), n_slots=2, loss_grad=loss_quadratic_grad)
-    # answering step
-    objective = loss(answerer(emb1, q), y)  # + 1e-6 * tf.nn.l2_loss(emb0)
+    # reading and answering steps
+    emb1 = reader(emb0=emb0, context=(qc, yc), weights=wc, n_slots=2, loss_grad=loss_quadratic_grad)
+    pred = answerer(emb1, q, scoring=scoring)
+    objective = loss(pred, y)
+    if reg > 0:
+        objective += reg * tf.nn.l2_loss(emb0)
 
-    # tf_debug_gradient(emb0, objective, verbose=False)  # This creates new variables...
+    return objective, pred, y
 
-    # train the model
-    optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
-    hooks = [lambda it, e, xy, f: it and ((it % 10) == 0) and print("%d) loss=%f" % (it, f[0]))]
-    # hooks += [OperatorHook(tf_show(grads[0]), sampler[0][1])]
-    params = learn(objective, optimizer=optimizer, hooks=hooks, max_epochs=500, variables=[emb0])
 
-    # mat_est = model.numeric_eval(params, x_mat)
-    #
-    if verbose:
-        #     print(0.5 * np.linalg.norm(mat_est - y_mat) ** 2)  # we should have recovered the low-rank matrix
-        print(params[-1])
-        pass
-    # else:
-    #     assert (np.linalg.norm(mat_est - y_mat) < 1e-3)
+class EmbeddingUpdater(object):
+    def __init__(self, rank, n_ents, reg, max_epochs=500, verbose=True):
+        self.verbose = verbose
+        self.rank = rank
+        self.n_ents = n_ents
+        self.max_epochs = max_epochs
+        self.reg = reg
+        self.params = None
+
+
+    def learn(self, data_train):
+        with tf.Graph().as_default() as _:
+            # create sampler and variables
+            variables, sampler = machine_reading_sampler(data_train, batch_size=None)
+            # main graph
+            objective, _, _ = embedding_updater_model(variables, rank=self.rank, n_ents=self.n_ents, reg=self.reg)
+            # tf_debug_gradient(emb0, objective, verbose=False)  # This creates new variables...
+            # train the model
+            optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
+            hooks = []
+            if self.verbose:
+                hooks += [lambda it, e, xy, f: it and ((it % 1) == 0) and print("%d) loss=%f" % (it, f[0]))]
+            self.params = learn(objective, sampler, optimizer=optimizer, hooks=hooks, max_epochs=self.max_epochs)
+
+    def predict(self, data):
+        with tf.Graph().as_default() as _:
+            variables_test, sampler_test = machine_reading_sampler(data, batch_size=None)
+            ops = embedding_updater_model(variables_test, rank=self.rank, n_ents=self.n_ents, init_params=self.params)
+            nll, pred, y = tf_eval(ops)
+        return nll, pred, y
+
+
+def eval_auc(pred, y):
+    fpr, tpr, thresholds = metrics.roc_curve(y, pred, pos_label=1)
+    return metrics.auc(fpr, tpr)
+
+
+def test_larcqy_logistic(verbose=False):
+    # factorization of the parameters with multiple linear regressions
+
+    toy = False
+    np.random.seed(1)
+
+    # load toy data
+    if toy:
+        data, rank, emb0_val = toy_dual_supervision_data()
+        data_train, data_test = train_test_split(data)
+        n_ents = 1 + np.max([np.max([np.max(t[0]) for t in qc[0]]) for qc in data_train] +
+                            [np.max([np.max(t[0]) for t in qc[0]]) for qc in data_test])
+    else:
+        from factorix.demos.urban.urban_data_loading import load_area_aspects_data
+        # aspects = {'multicultural'}
+        # aspects = {'posh'}
+        aspects = {'waterside'}
+        nw, na = 1000000, 300
+        data_train, voc = load_area_aspects_data(aspects, 'train', max_n_words_per_area=nw, max_n_words_per_aspect=na)
+        data_test, voc = load_area_aspects_data(aspects, 'test', max_n_words_per_area=nw, max_n_words_per_aspect=na,
+                                                vocab=voc)
+        rank = 1
+        n_ents = len(voc.index)
+
+    regs = np.linspace(0.1, 20, 10)
+    max_epochs_list = [500]  # range(25, 500, 25)
+
+    for reg in regs:
+        for max_epochs in max_epochs_list:
+            model = EmbeddingUpdater(rank, n_ents, reg, max_epochs, verbose=False)
+            model.learn(data_train)
+            test_nll, pred, y = model.predict(data_test)
+            test_auc = eval_auc(pred, y)
+            print('reg: ', reg, 'niter: ', max_epochs, ', auc: ', test_auc, ', nll: ', test_nll)
 
 
 if __name__ == "__main__":
@@ -415,4 +398,5 @@ if __name__ == "__main__":
     # mat = tf.constant(np.outer(range(n_data), np.ones(n_features)), dtype='int64')
     # print(tf_eval(mat))
     #
-    test_larcqy_logistic(True)
+    test_larcqy_logistic(False)
+

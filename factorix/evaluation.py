@@ -2,20 +2,35 @@
 """
 Created on Mon Jan 11 10:24:01 2016
 
-@author: Johannes
+@author: Johannes, Guillaume
 """
 
 import numpy as np
-import Dictionaries as Dict
+import factorix.Dictionaries as Dict
 
-import learn_factorization as lf
-import tensorflow as tf
-
-
-
+# import learn_factorization as lf
+# import tensorflow as tf
+import random
 
 
+def train_test_split(data, prop_test=0.5):
+    """
+    Split a list into random training and test sets
+    Args:
+        data (list): list to shuffle
+        prop_test (float): proportion of test data
 
+    Returns:
+        train and test sets
+
+    """
+    n = len(data)
+    n_test = int(n * prop_test) if prop_test < 1 else prop_test
+    perm = [x for x in range(n)]
+    random.shuffle(perm)
+    data_train = [data[i] for i in perm[n_test:]]
+    data_test = [data[i] for i in perm[:n_test]]
+    return data_train, data_test
 
 
 # object_domain: the domain that contains the object
@@ -24,8 +39,8 @@ def get_ranking_batch(gold_tuple, interactions, object_domain,
                       String2Int, Int2String, verbose = False):
 
     gold_obj_index = gold_tuple[object_domain]    
-    
-    #get identities of all the _objects_ in the dictionary
+
+    # get identities of all the _objects_ in the dictionary
     object_list = [k for k in String2Int.keys() \
                     if len(k.split(",")) == 1 and \
                     k.split(">>")[0] == str(object_domain) ]

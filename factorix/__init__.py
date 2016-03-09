@@ -1,5 +1,7 @@
 import tensorflow as tf
-# from naga.factorix.scoring import sparse_multilinear_dot_product
+import os, re
+
+FACTORIX_DIR = re.compile('factorix/factorix').split(os.path.abspath(__file__))[0] + 'factorix/factorix'
 
 
 def tf_eval(expr):
