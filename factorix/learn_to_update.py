@@ -162,6 +162,8 @@ def vectorize_samples(data, max_context_length=None):
 
 def reader(context: Tuple[tf.Variable, tf.Variable], emb0: tf.Variable, n_slots: int,
            weights=None,
+           scale_prediction=0.0,
+           start_from_zeros=False,
            loss_grad=loss_quadratic_grad,
            emb_update=multilinear_grad):
     """
@@ -189,26 +191,29 @@ def reader(context: Tuple[tf.Variable, tf.Variable], emb0: tf.Variable, n_slots:
     step_size = tf.Variable(1.0, name='step_size', trainable=False)
 
     grad_score, preds = emb_update(emb0, context_inputs, score=True)
-    update_strength = tf.tile(tf.reshape(loss_grad(preds, context_ouputs) * weights,
+    update_strength = tf.tile(tf.reshape(loss_grad(preds * scale_prediction, context_ouputs) * weights,
                                          (n_data, n_obs, 1)), (1, 1, rank))
 
     grad_loss = tf.reshape(grad_score, (n_data, n_obs, rank)) * update_strength
 
-    if False:  # legacy code that might not work (was not working anyway due to the scatter_add that need reset)
-        zeros0 = tf.Variable(np.zeros((n_data * n_slots, rank), dtype=np.float32),
-                             name='initial_slot_embeddings', trainable=False)
+    # if False:  # legacy code that might not work (was not working anyway due to the scatter_add that need reset)
+    #     zeros0 = tf.Variable(np.zeros((n_data * n_slots, rank), dtype=np.float32),
+    #                          name='initial_slot_embeddings', trainable=False)
+    #
+    #     zeros = tf.assign(zeros0, np.zeros((n_data * n_slots, rank), dtype=np.float32))
+    #     indices = context_inputs[:, :, slot_dim] + shift_indices
+    #     total_grad_loss = tf.reshape(tf.scatter_add(zeros, indices, grad_loss), (n_data, n_obs, n_slots, rank))
+    #     # could also try tf.dynamic_partition(data, context_inputs[:, :, slot_dim], num_partitions)
+    # else:
+    one_hot = tf.Variable(np.eye(n_slots, n_slots, dtype=np.float32), trainable=False)
+    indic_mat = tf.gather(one_hot, context_inputs[:, :, slot_dim])  # shape: (n_data, n_obs, n_slots)
+    total_grad_loss = tf.batch_matmul(indic_mat, grad_loss, adj_x=True)
 
-        zeros = tf.assign(zeros0, np.zeros((n_data * n_slots, rank), dtype=np.float32))
-        indices = context_inputs[:, :, slot_dim] + shift_indices
-        total_grad_loss = tf.reshape(tf.scatter_add(zeros, indices, grad_loss), (n_data, n_obs, n_slots, rank))
-        # could also try tf.dynamic_partition(data, context_inputs[:, :, slot_dim], num_partitions)
+    if start_from_zeros:
+        return total_grad_loss * step_size  # size of the output: (n_data, n_slots, rank)
     else:
-        one_hot = tf.Variable(np.eye(n_slots, n_slots, dtype=np.float32), trainable=False)
-        indic_mat = tf.gather(one_hot, context_inputs[:, :, slot_dim])  # shape: (n_data, n_obs, n_slots)
-        total_grad_loss = tf.batch_matmul(indic_mat, grad_loss, adj_x=True)
-
-    initial_slot_embs = tf.reshape(tf.tile(emb0[:n_slots, :], (n_data, 1)), (n_data, n_slots, rank))
-    return initial_slot_embs - total_grad_loss * step_size  # size of the output: (n_data, n_slots, rank)
+        initial_slot_embs = tf.reshape(tf.tile(emb0[:n_slots, :], (n_data, 1)), (n_data, n_slots, rank))
+        return initial_slot_embs - total_grad_loss * step_size  # size of the output: (n_data, n_slots, rank)
 
 
 def answerer(embeddings, tuples: tf.Variable, scoring=multilinear):

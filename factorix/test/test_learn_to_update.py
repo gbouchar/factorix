@@ -1,9 +1,9 @@
 
 # import numpy as np
 from sklearn import metrics
-from datetime import datetime
+# from datetime import datetime
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 from sklearn import linear_model
 from sklearn import datasets
@@ -20,112 +20,73 @@ def eval_auc(pred, y):
     return metrics.auc(fpr, tpr)
 
 
-def test_logistic_regression_equivalence(verbose=False, plot=False):
-
+def test_logistic_regression_equivalence_learning(verbose=False):
     iris = datasets.load_iris()
-    X = iris.data
+    x_mat = iris.data
     y = iris.target
-
-    X = X[y != 2]
+    x_mat = x_mat[y != 2, 0:1]
     y = y[y != 2]
-
-    X -= np.mean(X, 0)
-
-    ###############################################################################
-    # Demo path functions
-
-    #
-    n_ents = X.shape[1] + 3
-
-    # cs = np.logspace(-2, 2, 20)
-    c = 1.0
+    x_mat -= np.mean(x_mat, 0)
+    n_ents = x_mat.shape[1] + 3
+    idx_show = [0, 99]
+    c = 1e10  # no regularization
     clf1 = linear_model.LogisticRegression(C=c, penalty='l2', tol=1e-6)
-    clf1.fit(X, y)
-    prob = clf1.predict_proba(X)
-    n_show = 3
-    print('linear_model.LogisticRegression predictions:', prob[0:n_show])
-    scores = X.dot(clf1.coef_.T) + clf1.intercept_
-    print('logistic regression prediction: ', 1.0 / (np.exp(-scores[0:n_show]) + 1.0))
-
-    clf2 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=c, max_epochs=500, verbose=False,
+    clf1.fit(x_mat, y)
+    scores = x_mat.dot(clf1.coef_.T) + clf1.intercept_
+    clf2 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=1e-10, max_epochs=200, verbose=verbose,
                             preprocessing=multitask_to_tuples)
     clf2.logistic2embeddings(coefs=clf1.coef_, intercept=clf1.intercept_)
-    pred, y, nll = clf2.predict(X[0:n_show,], y[0:n_show])
-    print('EmbeddingUpdater predictions:', 1.0 / (np.exp(-pred[0:n_show]) + 1.0))
+    pred, y, nll = clf2.predict(x_mat, y)
+    clf2.fit(x_mat, y)
+    pred2, y2, nll2 = clf2.predict(x_mat, y)
+    clf3 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=1e-10, max_epochs=200, verbose=verbose,
+                            preprocessing=multitask_to_tuples)
+    clf3.fit(x_mat, y)
+    pred3, y3, nll3 = clf3.predict(x_mat, y)
+    if verbose:
+        print('logistic regression prediction:\n', 1.0 / (np.exp(-scores[idx_show]) + 1.0))
+        print('EmbeddingUpdater predictions before learning:\n', 1.0 / (np.exp(-pred[idx_show]) + 1.0))
+        print('EmbeddingUpdater predictions after learning (oracle initialization): \n',
+              1.0 / (np.exp(-pred2[idx_show]) + 1.0))
+        print('EmbeddingUpdater predictions after learning (random initialization): \n',
+              1.0 / (np.exp(-pred3[idx_show]) + 1.0))
+    assert(np.linalg.norm(scores-pred) < 1e-2)
+    assert(np.linalg.norm(scores-pred2) < 1e-2)
+    assert(np.linalg.norm(scores-pred3) < 1e-2)
 
-    clf2.logistic2embeddings(coefs=clf1.coef_, intercept=clf1.intercept_)
-    pred, y, nll = clf2.predict(X[0:n_show,], y[0:n_show])
-    print('same:', 1.0 / (np.exp(-pred[0:n_show]) + 1.0))
 
-
-def test_logistic_regression_equivalence_old(verbose=False, plot=False):
-
+def test_logistic_regression_equivalence_prediction(verbose=False):
     iris = datasets.load_iris()
-    X = iris.data
+    x_mat = iris.data
     y = iris.target
-
-    X = X[y != 2]
+    x_mat = x_mat[y != 2]
     y = y[y != 2]
+    x_mat -= np.mean(x_mat, 0)
+    n_ents = x_mat.shape[1] + 3  # number of entities is the dimension with 2 slots and 1 intercept
+    clf1 = linear_model.LogisticRegression(C=1.0, penalty='l2', tol=1e-6)
+    clf1.fit(x_mat, y)
+    prob = clf1.predict_proba(x_mat)
+    n_show = 3
+    scores = x_mat.dot(clf1.coef_.T) + clf1.intercept_
+    clf2 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=1.0, max_epochs=500, verbose=False,
+                            preprocessing=multitask_to_tuples)
+    clf2.logistic2embeddings(coefs=clf1.coef_, intercept=clf1.intercept_)
+    pred2, y, nll = clf2.predict(x_mat, y)
+    clf3 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=1.0, max_epochs=500, verbose=False,
+                            preprocessing=multitask_to_tuples)
+    clf3.logistic2embeddings(coefs=clf1.coef_, intercept=clf1.intercept_)
+    pred3, y, nll = clf3.predict(x_mat, y)
 
-    X -= np.mean(X, 0)
-
-    ###############################################################################
-    # Demo path functions
-
-    #
-    n_ents = X.shape[1] + 2
-
-    # cs = np.logspace(-2, 2, 20)
-    cs = [1.0]
-
-    clfs_groups = [
-        [linear_model.LogisticRegression(C=c, penalty='l2', tol=1e-6) for c in cs],
-        [EmbeddingUpdater(1, n_ents, c, max_epochs=500, n_slots=2, verbose=False, preprocessing=multitask_to_tuples)
-         for c in cs]
-        ]
-
-    print("Computing regularization path ...")
-    start = datetime.now()
-    coefs_ = []
-    for i, clfs in enumerate(clfs_groups):
-        tmp = []
-        for clf in clfs:
-            if i is 1:
-                clf.logistic2embeddings(coefs_[0][0])
-            clf.fit(X, y)
-            print(clf.coef_)
-            tmp.append(clf.coef_.ravel().copy())
-        print("This took ", datetime.now() - start)
-        coefs_.append(tmp)
-
-    if plot:
-        coefs_ = np.array(coefs_)
-        plt.plot(np.log10(cs), coefs_)
-        ymin, ymax = plt.ylim()
-        plt.xlabel('log(C)')
-        plt.ylabel('Coefficients')
-        plt.title('Logistic Regression Path')
-        plt.axis('tight')
-        plt.show()
-    else:
-
-        for c, coef1, coef2 in zip(cs, coefs_[0], coefs_[1]):
-            print('%7.2f: [%s] \t [%s]' % (c,
-                                           ', '.join(['%5.2f' % x for x in coef1]),
-                                           ', '.join(['%5.2f' % x for x in coef2])))
-
-            # model = EmbeddingUpdater(rank, n_ents, reg, max_epochs, verbose=False)
-            # model.fit(data_train)
-            # pred, y, test_nll = model.predict(data_test)
-            # test_auc = eval_auc(pred, y)
-            # if verbose:
-            #     print('reg: ', reg, 'niter: ', max_epochs, ', auc: ', test_auc, ', nll: ', test_nll)
+    if verbose:
+        print('linear_model.LogisticRegression predictions:', prob[0:n_show])
+        print('logistic regression prediction: ', 1.0 / (np.exp(-scores[0:n_show]) + 1.0))
+        print('EmbeddingUpdater predictions:', 1.0 / (np.exp(-pred2[0:n_show]) + 1.0))
+        print('same:', 1.0 / (np.exp(-pred3[0:n_show]) + 1.0))
+    assert(np.linalg.norm(scores - pred2) < 1e-2)
+    assert(np.linalg.norm(scores - pred3) < 1e-2)
 
 
 if __name__ == "__main__":
-    # n_data = 6
-    # n_features = 5
-    # mat = tf.constant(np.outer(range(n_data), np.ones(n_features)), dtype='int64')
-    # print(tf_eval(mat))
-    #
-    test_logistic_regression_equivalence(False)
+    for v in [False, True]:
+        test_logistic_regression_equivalence_prediction(verbose=v)
+        test_logistic_regression_equivalence_learning(verbose=v)
