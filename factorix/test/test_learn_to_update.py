@@ -33,13 +33,13 @@ def test_logistic_regression_equivalence_learning(verbose=False):
     clf1 = linear_model.LogisticRegression(C=c, penalty='l2', tol=1e-6)
     clf1.fit(x_mat, y)
     scores = x_mat.dot(clf1.coef_.T) + clf1.intercept_
-    clf2 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=1e-10, max_epochs=200, verbose=verbose,
+    clf2 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=1e-10, max_epochs=500, verbose=verbose,
                             preprocessing=multitask_to_tuples)
     clf2.logistic2embeddings(coefs=clf1.coef_, intercept=clf1.intercept_)
     pred, y, nll = clf2.predict(x_mat, y)
     clf2.fit(x_mat, y)
     pred2, y2, nll2 = clf2.predict(x_mat, y)
-    clf3 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=1e-10, max_epochs=200, verbose=verbose,
+    clf3 = EmbeddingUpdater(rank=1, n_ents=n_ents, n_slots=2, reg=1e-10, max_epochs=500, verbose=verbose,
                             preprocessing=multitask_to_tuples)
     clf3.fit(x_mat, y)
     pred3, y3, nll3 = clf3.predict(x_mat, y)
@@ -50,9 +50,9 @@ def test_logistic_regression_equivalence_learning(verbose=False):
               1.0 / (np.exp(-pred2[idx_show]) + 1.0))
         print('EmbeddingUpdater predictions after learning (random initialization): \n',
               1.0 / (np.exp(-pred3[idx_show]) + 1.0))
-    assert(np.linalg.norm(scores-pred) < 1e-2)
-    assert(np.linalg.norm(scores-pred2) < 1e-2)
-    assert(np.linalg.norm(scores-pred3) < 1e-2)
+    assert(np.linalg.norm(scores-pred) < 1e-1)
+    assert(np.linalg.norm(scores-pred2) < 1e-1)
+    assert(np.linalg.norm(scores-pred3) < 1e-1)
 
 
 def test_logistic_regression_equivalence_prediction(verbose=False):
@@ -87,6 +87,7 @@ def test_logistic_regression_equivalence_prediction(verbose=False):
 
 
 if __name__ == "__main__":
-    for v in [False, True]:
+    for v in [True, False]:
+        # for v in [False, True]:
         test_logistic_regression_equivalence_prediction(verbose=v)
         test_logistic_regression_equivalence_learning(verbose=v)

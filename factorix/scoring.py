@@ -54,22 +54,21 @@ def multilinear(emb, tuples, l2=0):
         return pred, reg
 
 
-def multilinear_grad(emb: tf.Tensor, tuples: tf.Tensor, score=False, slot_dim=0) -> tf.Tensor:
+def multilinear_grad(emb: tf.Tensor, tuples: tf.Tensor, score=False) -> tf.Tensor:
     tuple_shape = [d.value for d in tuples.get_shape()]
     # if len(tuple_shape) > 2:
     #     n = np.prod(tuple_shape[:-1])
     #     tuples = tf.reshape(tuples, (n, -1))
     # n = tuples.get_shape()[0].value
     order = tuples.get_shape()[2].value
-    rank = emb.get_shape()[1].value
+    rank = emb.get_shape()[-1].value
     if order == 2:
-        if slot_dim == 0:
-            if score:
-                emb_sel = tf.gather(emb, tuples)
-                grad_score = tf.reshape(emb_sel[:, :, 1, :], tuple_shape[:-1] + [rank])
-                prod = tf.reduce_prod(emb_sel, 2)
-                preds = tf.reshape(tf.reduce_sum(prod, 2), tuple_shape[:-1])
-                return grad_score, preds
+        if score:
+            emb_sel = tf.gather(emb, tuples)
+            grad_score = tf.reshape(tf.reverse(emb_sel, [False, False, True, False]), tuple_shape[:-1] + [2, rank])
+            prod = tf.reduce_prod(emb_sel, 2)
+            preds = tf.reshape(tf.reduce_sum(prod, 2), tuple_shape[:-1])
+            return grad_score, preds
     raise NotImplementedError('Todo')
                 # grad_score0 = tf.reverse(emb_sel, [False, True, False])  # reverse the row and column embeddings
     #         prod = tf.reduce_prod(emb_sel, 1)
