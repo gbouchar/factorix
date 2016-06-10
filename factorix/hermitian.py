@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from naga.shared.tf_addons import tf_eval
+from factorix.utils.tf_addons import tf_eval
 
 def hermitian_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None, symmetry_coef=(1.0, 1.0),
                            learn_symmetry_coef=True):
@@ -71,7 +71,7 @@ def sparse_hermitian_scoring(params, tuples):
     """
     TensorFlow operator that scores tuples by the dot product of their complex embeddings.
 
-    It is the same a the sparse_multilinear_dot_product function, but uses complex embeddings instead. The complex
+    It is the same a the multilinear function, but uses complex embeddings instead. The complex
     embeddings are of size 2 * R where R is the complex
     dimension. They are encoded such that the first columns correspond to the real part, and the last R correspond to
     the imaginary part. The result of this function is a length-N vector with values:
@@ -108,7 +108,7 @@ def sparse_relational_hermitian_scoring(emb, tuples):
     """
     TensorFlow operator that scores triples where relations are defined by a complex vector w
 
-    It is the same a the sparse_multilinear_dot_product function, but uses complex embeddings instead. The complex
+    It is the same a the multilinear function, but uses complex embeddings instead. The complex
     embeddings are of size 2 * R where R is the complex
     dimension. They are encoded such that the first columns correspond to the real part, and the last R correspond to
     the imaginary part. The result of this function is a length-N vector with values:

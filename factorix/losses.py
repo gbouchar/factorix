@@ -1,7 +1,7 @@
 
 from collections import defaultdict
 import tensorflow as tf
-from naga.shared.tf_addons import tf_eval
+from factorix.utils.tf_addons import tf_eval
 
 
 def bin_tuples_by_type(tuples):

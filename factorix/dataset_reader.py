@@ -8,7 +8,7 @@ This file is for reading in and preparing the FB15K237 dataset
 @author: Johannes
 """
 import numpy as np
-import naga.shared.dictionaries as Dict
+import factorix.utils.dictionaries as Dict
 
 
 def mat2tuples(y_mat, sparse=False, common_types=False):

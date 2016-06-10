@@ -147,22 +147,44 @@ def force_list_length(l, n):
         return l
 
 
-def re_index(tuples, voc):
+def local_vocabulary(tuples, voc):
     """
     Create a local index on a list of tuples and updates the global vocabulary
     Args:
-        tuples:
-        voc:
+        tuples: valued tuples, i.e. set of (t, v) pairs where t is a tuple of strings and v is the corresponding value
+        voc: global vocabulary: Indexer object that stores all the strings it has seen so far
 
     Returns:
+        triplet: (indexed_tuples, ref_to_global, new_vocabulary)
+        indexed_tuples is a set of valued tuples where strings are replaced by local indices
+        ref_to_global is a set of indices in the global vocabulary that are referenced by the tuples indices
+        global_vocabulary is the updated global vocabulary
 
     Examples:
         >>> x = [(("Alice", "likes", "Bob"), True), (("Bob", "likes", "Carla"), True), (("Bob", "likes", "Alice"), False)]
         >>> y = [(("Alice", "likes", "Carla"), True), (("Alice", "sings"), True), (("Bob", "is", "alive"), False)]
         >>> voc = Indexer(("likes", "is", "work", "home", "has", "seen", "the", "have", "people"))
-        >>> re_index(x, voc)
-        >>> re_index(y, voc)
-        >>> re_index(x + y, voc)
+        >>> tuples, idx, voc = local_vocabulary(x, voc)
+        >>> tuples
+        [((0, 1, 2), True), ((2, 1, 3), True), ((2, 1, 0), False)]
+        >>> idx
+        [9, 0, 10, 11]
+        >>> voc
+        Indexer(likes, is, work, home, has, seen, the, have, people, Alice, Bob, Carla)
+        >>> tuples, idx, voc = local_vocabulary(y, voc)
+        >>> tuples
+        [((0, 1, 2), True), ((0, 3), True), ((4, 5, 6), False)]
+        >>> idx
+        [9, 0, 11, 12, 10, 1, 13]
+        >>> voc
+        Indexer(likes, is, work, home, has, seen, the, have, people, Alice, Bob, Carla, sings, alive)
+        >>> tuples, idx, voc = local_vocabulary(x + y, voc)
+        >>> tuples
+        [((0, 1, 2), True), ((2, 1, 3), True), ((2, 1, 0), False), ((0, 1, 3), True), ((0, 4), True), ((2, 5, 6), False)]
+        >>> idx
+        [9, 0, 10, 11, 12, 1, 13]
+        >>> voc
+        Indexer(likes, is, work, home, has, seen, the, have, people, Alice, Bob, Carla, sings, alive)
     """
     new_tuples = []
     local_voc0 = Indexer()
@@ -179,7 +201,7 @@ def create_local_voc(data, global_voc=None):
     global_voc = global_voc or Indexer()
     new_data = []
     for inputs, outputs in data:
-        seq, local_voc, global_voc = re_index(inputs + outputs, global_voc)
+        seq, local_voc, global_voc = local_vocabulary(inputs + outputs, global_voc)
         new_inputs = seq[:len(inputs)]
         new_outputs = seq[len(inputs):]
         new_data.append((new_inputs, new_outputs, local_voc))
@@ -219,7 +241,6 @@ def machine_reading_sampler(data, batch_size=None, n_ents=None, shuffling=True, 
         if local_voc:
             raise NotImplementedError('local vocabulary to be implemented')
         return (qc, yc, wc, q, y, ref_to_global), None
-
 
 
 def vectorize_samples(data, max_context_length=None):
@@ -325,6 +346,10 @@ def answerer(embeddings, tuples: tf.Variable, scoring=multilinear):
 #     x = [(("Alice", "likes", "Bob"), True), (("Bob", "likes", "Carla"), True), (("Bob", "likes", "Alice"), False)]
 #     y = [(("Alice", "likes", "Carla"), True), (("Alice", "sings"), True), (("Bob", "is", "alive"), False)]
 #     voc = Indexer(("likes", "is", "work", "home", "has", "seen", "the", "have", "people"))
-#     re_index(x, voc)
-#     re_index(y, voc)
-#     re_index(x + y, voc)
+#     local_vocabulary(x, voc)
+#     local_vocabulary(y, voc)
+#     local_vocabulary(x + y, voc)
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()

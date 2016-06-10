@@ -73,7 +73,7 @@ def main():
     #n_train = 287044
     n_iter = 20
     #choose a dot product to use. # can be 
-            #sparse_multilinear_dot_product
+            #multilinear
             #multilinear_square_product
             #generalised_multilinear_dot_product
     dot_product = generalised_multilinear_dot_product

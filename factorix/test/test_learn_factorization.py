@@ -1,10 +1,44 @@
 import numpy as np
+import tensorflow as tf
 
 from factorix.hermitian import hermitian_tuple_scorer, hermitian_dot
 from factorix.toy_examples import toy_factorization_problem, svd_factorize_matrix
 from factorix.learn_factorization import factorize_tuples
 from factorix.dataset_reader import mat2tuples
-from factorix.samplers import tuple_sampler
+from factorix.utils.learning import data_to_batches, feed_dict_sampler, learn
+from factorix.losses import loss_func
+from factorix.scoring import multilinear_tuple_scorer
+from factorix.utils.tf_addons import tf_eval
+
+
+from factorix.samplers import positive_and_negative_tuple_sampler
+
+
+def test_learning_factorization(verbose=False):
+    n = 9
+    m = 8
+    y_mat = toy_factorization_problem(n=n, m=m, rk=3, noise=1)
+    rank = 2
+    batch_size = n * m
+    tuples = mat2tuples(y_mat)
+    tuple_iterable = data_to_batches(tuples, minibatch_size=batch_size)
+    # tuple_iterable = positive_and_negative_tuple_sampler(mat2tuples(y_mat), minibatch_size=batch_size)
+    sampler, (x, y) = feed_dict_sampler(tuple_iterable, types=[np.int64, np.float32])
+    loss_op = tf.reduce_mean(loss_func(multilinear_tuple_scorer(x, rank=rank, n_emb=n+m)[0], y, 'quadratic'))
+    initial_losses = [tf_eval(loss_op, f) for _, f in sampler]
+    if verbose:
+        print(initial_losses)
+    # hooks = [lambda s, e, it, l: it and ((it % 100) == 0) and print("%d) loss=%f" % (it, l))]
+    hooks = [lambda it, b, l: it and ((it % 1) == 0) and print("{0}) train loss={1}".format(it, l[0]))]
+
+    emb, = learn(loss_op, sampler, tf.train.AdamOptimizer(learning_rate=0.1), hooks, max_epochs=200)
+    # emb, = learn(l, sampler, tf.train.GradientDescentOptimizer(learning_rate=0.5), hooks, max_epochs=500)
+    # emb, = learn(l, sampler, tf.train.AdagradOptimizer(0.01, initial_accumulator_value=0.01), hooks, max_epochs=500)
+    mat0 = svd_factorize_matrix(y_mat, rank=2)  # exact svd solution
+    mat = emb[:n, :].dot(emb[n:, :].T)
+    if verbose:
+        print(np.linalg.norm(mat - mat0))
+    assert(np.linalg.norm(mat - mat0) < 1e-3)
 
 
 def test_tuples_factorization_rectangular_matrix(verbose=False, hermitian=False):
@@ -100,7 +134,7 @@ def test_sparse_factorization(verbose=False):
 
     u_dense = factorize_tuples(tuples_dense, 4, emb0=None, n_iter=500, verbose=verbose, eval_freq=100)[0]
     # rr_sampler = all_tensor_indices(tuples_sparse, batch_size=n * n, prop_negatives=1)
-    # sampler = tuple_sampler(tuples_sparse, minibatch_size=10, prop_negatives=0.5, idx_ranges=[(0, n), (n, 2 * n)])
+    # sampler = positive_and_negative_tuple_sampler(tuples_sparse, minibatch_size=10, prop_negatives=0.5, idx_ranges=[(0, n), (n, 2 * n)])
     # u_sparse = factorize_tuples(sampler, 4, emb0=None, n_iter=500, verbose=verbose, eval_freq=100)[0]
     x_mat_est_dense = np.dot(u_dense[:7], u_dense[7:].T)
     # x_mat_est_sparse = np.dot(u_sparse[:7], u_sparse[7:].T)
@@ -113,6 +147,7 @@ def test_sparse_factorization(verbose=False):
         # assert(np.linalg.norm(x_mat_est1 - x_mat_est_sparse) < 1e-3)
 
 if __name__=="__main__":
-    test_tuples_factorization_rectangular_matrix(verbose=True)
-    test_learn_factorization(verbose=True)
-    test_sparse_factorization(verbose=True)
+    test_learning_factorization(verbose=True)
+    # test_tuples_factorization_rectangular_matrix(verbose=True)
+    # test_learn_factorization(verbose=True)
+    # test_sparse_factorization(verbose=True)

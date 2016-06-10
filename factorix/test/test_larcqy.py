@@ -9,7 +9,7 @@ from naga.shared.learning import learn, data_to_batches, placeholder_feeder, fee
 from factorix.Dictionaries import NEW_ID
 from factorix.losses import total_loss_quadratic, loss_quadratic_grad, total_loss_logistic
 from factorix.scoring import multilinear
-from factorix.learn_to_update import reader, answerer, vectorize_samples
+from factorix.learn_to_update import reader, answerer, vectorize_samples, EmbeddingUpdater
 from naga.shared.tf_addons import tf_eval
 from factorix.evaluation import train_test_split
 
@@ -269,86 +269,9 @@ def toy_dual_supervision_data():
     return data, rank_gold, emb0_val
 
 
-def machine_reading_sampler(data, batch_size=None, n_ents=None):
-    data_arr = vectorize_samples(data)
-    if batch_size is not None:
-        batches = data_to_batches(data_arr, batch_size, dtypes=[np.int64, np.float32, np.float32, np.int64, np.float32])
-        qc = tf.placeholder(np.int64, (batch_size, n_ents, 2), name='question_in_context')
-        yc = tf.placeholder(np.float32, (batch_size, n_ents), name='answer_in_context')
-        wc = tf.placeholder(np.float32, (batch_size, n_ents), name='answer_in_context')
-        q = tf.placeholder(np.int64, (batch_size, 1, 2), name='question')
-        y = tf.placeholder(np.float32, (batch_size, 1), name='answer')
-        sampler = placeholder_feeder((qc, yc, wc, q, y), batches)
-    else:
-        batches = data_to_batches(data_arr, len(data), dtypes=[np.int64, np.float32, np.float32, np.int64, np.float32])
-        qc0, yc0, wc0, q0, y0 = [x for x in batches][0]
-        qc = tf.Variable(qc0, trainable=False)
-        yc = tf.Variable(yc0, trainable=False)
-        wc = tf.Variable(wc0, trainable=False)
-        q = tf.Variable(q0, trainable=False)
-        y = tf.Variable(y0, trainable=False)
-        sampler = None
-    return (qc, yc, wc, q, y), sampler
 
 
-def embedding_updater_model(variables, rank,
-                            init_params=None,
-                            n_ents=None,
-                            init_noise=0.0,
-                            loss=total_loss_logistic,
-                            scoring = multilinear,
-                            reg=0.0):
 
-    qc, yc, wc, q, y = variables
-    # model definition
-    # initialization
-    if init_params is not None:
-        emb0_val = init_params[0]
-        emb0_val += np.random.randn(n_ents, rank) * init_noise
-    else:
-        emb0_val = np.random.randn(n_ents, rank)
-    emb0 = tf.Variable(np.array(emb0_val, dtype=np.float32))
-
-    # reading and answering steps
-    emb1 = reader(emb0=emb0, context=(qc, yc), weights=wc, n_slots=2, loss_grad=loss_quadratic_grad)
-    pred = answerer(emb1, q, scoring=scoring)
-    objective = loss(pred, y)
-    if reg > 0:
-        objective += reg * tf.nn.l2_loss(emb0)
-
-    return objective, pred, y
-
-
-class EmbeddingUpdater(object):
-    def __init__(self, rank, n_ents, reg, max_epochs=500, verbose=True):
-        self.verbose = verbose
-        self.rank = rank
-        self.n_ents = n_ents
-        self.max_epochs = max_epochs
-        self.reg = reg
-        self.params = None
-
-
-    def learn(self, data_train):
-        with tf.Graph().as_default() as _:
-            # create sampler and variables
-            variables, sampler = machine_reading_sampler(data_train, batch_size=None)
-            # main graph
-            objective, _, _ = embedding_updater_model(variables, rank=self.rank, n_ents=self.n_ents, reg=self.reg)
-            # tf_debug_gradient(emb0, objective, verbose=False)  # This creates new variables...
-            # train the model
-            optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
-            hooks = []
-            if self.verbose:
-                hooks += [lambda it, e, xy, f: it and ((it % 1) == 0) and print("%d) loss=%f" % (it, f[0]))]
-            self.params = learn(objective, sampler, optimizer=optimizer, hooks=hooks, max_epochs=self.max_epochs)
-
-    def predict(self, data):
-        with tf.Graph().as_default() as _:
-            variables_test, sampler_test = machine_reading_sampler(data, batch_size=None)
-            ops = embedding_updater_model(variables_test, rank=self.rank, n_ents=self.n_ents, init_params=self.params)
-            nll, pred, y = tf_eval(ops)
-        return nll, pred, y
 
 
 def eval_auc(pred, y):
@@ -385,9 +308,9 @@ def test_larcqy_logistic(verbose=False):
 
     for reg in regs:
         for max_epochs in max_epochs_list:
-            model = EmbeddingUpdater(rank, n_ents, reg, max_epochs, verbose=False)
-            model.learn(data_train)
-            test_nll, pred, y = model.predict(data_test)
+            model = EmbeddingUpdater(rank, n_ents, reg, max_epochs=max_epochs, verbose=False)
+            model.fit(data_train)
+            pred, y, test_nll = model.predict(data_test)
             test_auc = eval_auc(pred, y)
             print('reg: ', reg, 'niter: ', max_epochs, ', auc: ', test_auc, ', nll: ', test_nll)
 

@@ -4,8 +4,8 @@ import tensorflow as tf
 from collections import namedtuple
 
 from factorix.losses import get_loss_type
-from factorix.learning import AutoReset
-from naga.shared.math import unique_rows, repeat_equally
+from factorix.utils.learning import AutoReset
+from factorix.utils.math import unique_rows, repeat_equally
 
 np.set_printoptions(precision=3)
 

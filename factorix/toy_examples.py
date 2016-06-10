@@ -2,6 +2,7 @@ import numpy as np
 
 np.set_printoptions(precision=3)
 
+
 def toy_factorization_problem(n=7, m=6, rk=2, noise=1, square=False, prop_zeros=0):
     """
     Create a random matrix which is the sum of a low-rank matrix and a entry-wise centered Gaussian noise
@@ -75,3 +76,9 @@ def svd_factorize_matrix(y_mat, rank, return_embeddings=False):
         return u, v
     else:
         return np.dot(u, v.T)
+
+
+np.random.seed(1)
+mat = toy_factorization_problem(5, 4)
+svd_factorize_matrix(mat, 2)
+

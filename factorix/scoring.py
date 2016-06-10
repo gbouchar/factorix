@@ -2,7 +2,7 @@ import random
 import numpy as np
 import tensorflow as tf
 
-from naga.shared.tf_addons import tf_eval
+from factorix.utils.tf_addons import tf_eval
 
 # from read_arit import read_arit_dialogs, dialog2txt
 # from naga.members.guillaume.NeuralPredictor import NeuralPredictor, IndependentSlicer, accuracy

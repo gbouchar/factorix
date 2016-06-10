@@ -7,8 +7,9 @@ import tensorflow as tf
 from factorix.losses import loss_func, get_loss_type
 from factorix.dataset_reader import mat2tuples
 from factorix.toy_examples import toy_factorization_problem, svd_factorize_matrix
-from factorix.samplers import tuple_sampler, simple_tuple_generator
+from factorix.samplers import positive_and_negative_tuple_sampler, simple_tuple_generator
 from factorix.scoring import multilinear_tuple_scorer
+
 
 
 def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000, eval_freq=100,
@@ -32,7 +33,7 @@ def factorize_tuples(tuples, rank=2, arity=None, minibatch_size=100, n_iter=1000
     Note about sparse_hermitian_product:
     To recover the predictions, you must average the real and imaginary part because it is learn using this formula.
     See the sparse_hermitian_product function with the 'real' default option. This is simpler in the real case when we
-    use the sparse_multilinear_dot_product function: we would replace hermitian_dot by dot(emb, emb.transpose())
+    use the multilinear function: we would replace hermitian_dot by dot(emb, emb.transpose())
 
     # demo of a rectangular matrix factorization with square loss:
     >>> y_mat = toy_factorization_problem(n=7, m=6, rk=4, noise=1)
