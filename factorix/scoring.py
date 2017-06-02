@@ -116,14 +116,14 @@ def multilinear_square_product(emb, tuples, l2=0):
 
     
 # def sum_all_dot_products( params, tuples, domain_offsets=[-1,-1,-1]):
-def sum_all_dot_products(params, tuples, l2=0):
+def sum_all_dot_products(emb, tuples, l2=0):
     """
      Compute the generalised linear product of real vectors at selected embeddings.
      This is the sum over all dimensions of the square of summed embedding vectors,
      minus a weighted version of the norms of each embedding used.
 
     Args:
-        params: embeddings: embedding matrix of size [n_emb, rank] containing float numbers
+        emb: embeddings: embedding matrix of size [n_emb, rank] containing float numbers
         tuples: tuples: tuple matrix of size [n_t, arity] containing integers
         l2: l2: optional l2 regularization strength that is added to the score. If it is different from 0, the function
     returns a pair (pred, l2norm) where pred is the sample prediction, but l2norm is the l2 norm of the selected
@@ -133,30 +133,26 @@ def sum_all_dot_products(params, tuples, l2=0):
         The multilinear square product between selected embeddings
         S[i] = sum_k ( sum_j  E[I[i,k],j] )^2
 
-            In the case of domain_offsets = [-1,-1,-1], the multilinear dot prod is recovered.
 
     #109 - 5 - 34 - 17 = 53
     #(8^2 + 5^2 + 0^2) - 5 - 10 - 17 = 73 - 32 = 41
-    >>> domain_offsets = [-1,-2,-1]
-    >>> embeddings = [[4., 1, 0], [2, 1, 0], [-1, 1, 1]]
-    >>> params = (embeddings, domain_offsets)
-    >>> idx = tf.Variable([[1,0,0], [1,1,0]])
-    >>> g = sum_all_dot_products(params, idx)
+    >>> emb = [[4., 1, 0, 1], [2, 1, 0, 1], [1, 1, 1, 3]]
+    >>> idx = tf.Variable([[0,1,2], [1,1,0]])
+    >>> g = sum_all_dot_products(emb, idx)
     >>> print(tf_eval(g))
-    [ 53.  41.]
+    [ 24.  26.]
+    >>> print(np.dot(emb[0], emb[1]) + np.dot(emb[1], emb[2]) + np.dot(emb[0], emb[2]))
+    24.0
+    >>> print(np.dot(emb[1], emb[1]) + np.dot(emb[1], emb[0]) + np.dot(emb[1], emb[0]))
+    26.0
     """
-    emb, domain_offsets = params
     emb_sel = tf.gather(emb, tuples)
     emb_sum = tf.reduce_sum(emb_sel, 1)
     squares = tf.square(emb_sum)
     square_score = tf.reduce_sum(squares, 1)
+    squared_norms = tf.reduce_sum(tf.square(emb_sel), 2)
 
-    squared_norms = tf.reduce_sum( tf.square(emb_sel), 2)
-
-    # norms = tf.mul(norms, domain_offsets)
-    # return square_score  #[ 109.   73.]
-    # return  tf.reduce_sum( tf.mul(squared_norms, domain_offsets) , 1) #[-56. -32.]
-    pred = square_score + tf.reduce_sum(tf.mul(squared_norms, domain_offsets), 1)
+    pred = 0.5 * (square_score - tf.reduce_sum(squared_norms, 1))
     if l2 == 0:  # unregularized prediction ==> returns only the predictions
         return pred
     else:  # l2 regularization of the selected embeddings
@@ -164,21 +160,3 @@ def sum_all_dot_products(params, tuples, l2=0):
         return pred, reg
 
 
-#
-# def multilinear_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None):
-#     emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
-#     embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
-#     return multilinear(embeddings, tuples_var), (embeddings,)
-#
-#
-# def generalised_multilinear_dot_product_scorer(tuples_var, rank=None, n_emb=None,
-#                                                emb0=None, norm_scalers = None):
-#     emb0 = emb0 if emb0 is not None else np.random.normal(size=(n_emb, rank))
-#     norm_scalers = norm_scalers if norm_scalers is not None \
-#         else np.random.normal( size=(len(tuples_var[0]) ) )
-#
-#     embeddings = tf.Variable(tf.cast(emb0, 'float32'), 'embeddings')
-#     n_scalers = tf.Variable(tf.cast(norm_scalers, 'float32'), 'norm_scalers')
-#     return sum_all_dot_products( (embeddings, n_scalers), tuples_var, l2=norm_scalers), \
-#            (embeddings, n_scalers)
-# =======

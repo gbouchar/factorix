@@ -78,7 +78,7 @@ if 1:
     #choose a dot product to use. # can be 
             #multilinear
             #multilinear_square_product
-            #generalised_multilinear_dot_product
+            #sum_all_dot_products
     dot_product = generalised_multilinear_dot_product
     
     

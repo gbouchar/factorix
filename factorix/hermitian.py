@@ -17,18 +17,18 @@ def hermitian_tuple_scorer(tuples_var, rank=None, n_emb=None, emb0=None, symmetr
     :return: a pair (scoring TensorFlow graph, parameters). The parameters have the form
      ([n_emd*rank] float matrix, symmetry coef)
 
-    >>> emb = [[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]
+    >>> embeddings = [[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]
     >>> tuples_var = tf.Variable([[0, 1], [1, 0], [0, 2], [2, 0], [1, 2], [2, 1]])
-    >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(1.0, 0.0))
+    >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=embeddings, symmetry_coef=(1.0, 0.0))
     >>> print(tf_eval(g))  # symmetric form
     [  4.   4.  15.  15.   6.   6.]
-    >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.0, 1.0))
+    >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=embeddings, symmetry_coef=(0.0, 1.0))
     >>> print(tf_eval(g))  # skewed (anti-symmetric) form
     [-2.  2.  3. -3.  4. -4.]
-    >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(1.0, 1.0))
+    >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=embeddings, symmetry_coef=(1.0, 1.0))
     >>> print(tf_eval(g))  # combination of the previous two forms
     [  2.   6.  18.  12.  10.   2.]
-    >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=emb, symmetry_coef=(0.9, 0.1))
+    >>> (g, params) = hermitian_tuple_scorer(tuples_var, emb0=embeddings, symmetry_coef=(0.9, 0.1))
     >>> print(tf_eval(g))  # close to symmetric
     [  3.39999986   3.79999995  13.80000019  13.19999981   5.79999971
        4.99999952]
@@ -45,8 +45,8 @@ def sparse_hermitian_product(emb, tuples):
     Compute the Hermitian inner product between selected complex embeddings
     This corresponds to the usual dot product applied on the conjugate of the first vector: <conj(x), y>
     where conj is the complex conjugate (obtained by inverting the imaginary part)
-    We consider that the embedding dimension is twice the rank, where the first part is in emb[:,:rk] and
-    the imaginary part is in emb[:,rk:].
+    We consider that the embedding dimension is twice the rank, where the first part is in embeddings[:,:rk] and
+    the imaginary part is in embeddings[:,rk:].
     It computes
      S[i] = <conj(E[I[i,1]], E[I[i,2]]>
     Usage:
@@ -83,8 +83,8 @@ def sparse_hermitian_scoring(params, tuples):
         - E is the N * 2R tensor of complex embeddings (R first columns: real part, the last R columsn: imaginary part)
         - alpha_0 and alpha_1 are the symmetry coefficients
 
-    :param params: tuple (emb, symm_coef) containing:
-        - emb: a real tensor of size [N, 2*R] containing the N rank-R embeddings by row (real part in the rank first R
+    :param params: tuple (embeddings, symm_coef) containing:
+        - embeddings: a real tensor of size [N, 2*R] containing the N rank-R embeddings by row (real part in the rank first R
         columns, imaginary part in the last R columns)
         - the 2-tuple (s0, s1) of symmetry coefficients (or complex-to-real projection coefficients) that are used to
         transform the complex result of the dot product into a real number, as used by most statistical models (e.g.
@@ -93,9 +93,9 @@ def sparse_hermitian_scoring(params, tuples):
     :param tuples: tuple matrix of size [T, 2] containing T pairs of integers corresponding to the indices of the
         embeddings.
     :return: Hermitian dot products of selected embeddings
-    >>> emb = (tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]), (0.0, 1.0))
+    >>> embeddings = (tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]]), (0.0, 1.0))
     >>> idx = tf.Variable([[0, 1], [1, 0], [0, 2], [2, 0], [1, 2], [2, 1]])
-    >>> g = sparse_hermitian_scoring(emb, idx)
+    >>> g = sparse_hermitian_scoring(embeddings, idx)
     >>> print(tf_eval(g))
     [-2.  2.  3. -3.  4. -4.]
     """
@@ -123,8 +123,8 @@ def sparse_relational_hermitian_scoring(emb, tuples):
         - E is the N * 2R tensor of complex embeddings (R first columns: real part, the last R columsn: imaginary part)
         - alpha_0 and alpha_1 are the symmetry coefficients
 
-    :param params: tuple (emb, symm_coef) containing:
-        - emb: a real tensor of size [N, 2*R] containing the N rank-R embeddings by row (real part in the rank first R
+    :param params: tuple (embeddings, symm_coef) containing:
+        - embeddings: a real tensor of size [N, 2*R] containing the N rank-R embeddings by row (real part in the rank first R
         columns, imaginary part in the last R columns)
         - the 2-tuple (s0, s1) of symmetry coefficients (or complex-to-real projection coefficients) that are used to
         transform the complex result of the dot product into a real number, as used by most statistical models (e.g.
@@ -133,9 +133,9 @@ def sparse_relational_hermitian_scoring(emb, tuples):
     :param tuples: tuple matrix of size [T, 2] containing T pairs of integers corresponding to the indices of the
         embeddings.
     :return: Hermitian dot products of selected embeddings
-    >>> emb = tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5], [-3, 1, 0, 2], [-1, 2, -1, -5]]) 
+    >>> embeddings = tf.Variable([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5], [-3, 1, 0, 2], [-1, 2, -1, -5]])
     >>> idx = tf.Variable([[0, 3, 1], [1, 3, 0], [0, 3, 2], [2, 4, 0], [1, 4, 2], [2, 4, 1]])
-    >>> g = sparse_relational_hermitian_scoring(emb, idx)
+    >>> g = sparse_relational_hermitian_scoring(embeddings, idx)
     >>> print(tf_eval(g))
     [  0.   8.  23.  44.  -8.  32.]
     """
@@ -168,8 +168,8 @@ def hermitian_dot(u, v):
     :return: a pair of n * m matrix of Hermitian inner products between all vector combinations:
         - Re(<u_i, v_j>) for the first output
         - Im(<u_i, v_j>) for the second output
-    >>> emb = np.array([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]])
-    >>> print(hermitian_dot(emb, emb.T))
+    >>> embeddings = np.array([[1., 1, 0, 3], [0, 1, 0, 1], [-1, 1, 1, 5]])
+    >>> print(hermitian_dot(embeddings, embeddings.T))
     (array([[ 11.,   4.,  15.],
            [  4.,   2.,   6.],
            [ 15.,   6.,  28.]]), array([[ 0., -2.,  3.],

@@ -75,7 +75,7 @@ def main():
     #choose a dot product to use. # can be 
             #multilinear
             #multilinear_square_product
-            #generalised_multilinear_dot_product
+            #sum_all_dot_products
     dot_product = generalised_multilinear_dot_product
     minibatch_size=1000
     learning_rate = 0.001

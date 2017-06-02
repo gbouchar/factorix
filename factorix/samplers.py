@@ -4,7 +4,7 @@ import tensorflow as tf
 from collections import namedtuple
 
 from factorix.losses import get_loss_type
-from factorix.utils.learning import AutoReset
+from factorix.utils.learning import AutoReset, create_minibatch_indices
 from factorix.utils.math import unique_rows, repeat_equally
 
 np.set_printoptions(precision=3)
